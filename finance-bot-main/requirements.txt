@@ -1,4 +1,5 @@
-aiogram==3.13.1
+maxapi==1.2.0
+aiohttp>=3.9.0
 anthropic==0.40.0
 gspread==6.1.4
 google-auth==2.35.0
