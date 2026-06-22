@@ -25,9 +25,18 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import plotly.graph_objects as go
 
-from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, BufferedInputFile
-from aiogram.filters import Command
+from maxapi import Router, F
+from maxapi.types import MessageCreated, MessageCallback, CallbackButton
+from maxapi.types.attachments import AttachmentButton, ButtonsPayload
+from maxapi.types.input_media import InputMediaBuffer
+from maxapi.enums import AttachmentType
+
+
+def _make_kb(rows: list[list]) -> AttachmentButton:
+    return AttachmentButton(
+        type=AttachmentType.INLINE_KEYBOARD,
+        payload=ButtonsPayload(buttons=rows),
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -639,76 +648,79 @@ def _generate_donut(warmup_name, plan_sum, plan_count,
 # ── Клавиатуры ─────────────────────────────────────────────────────
 
 def _kb_main():
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="➕ Новый прогрев", callback_data="wu_new")],
-        [InlineKeyboardButton(text="📊 Добавить статистику", callback_data="wu_add_stats")],
-        [InlineKeyboardButton(text="📈 Отчёт", callback_data="wu_report")],
-        [InlineKeyboardButton(text="📋 Данные по дням", callback_data="wu_view_days")],
-        [InlineKeyboardButton(text="👥 Обновить подписчиков", callback_data="wu_upd_subs"),
-         InlineKeyboardButton(text="🗑 Сбросить дни", callback_data="wu_clear_days")],
+    return _make_kb([
+        [CallbackButton(text="➕ Новый прогрев", payload="wu_new")],
+        [CallbackButton(text="📊 Добавить статистику", payload="wu_add_stats")],
+        [CallbackButton(text="📈 Отчёт", payload="wu_report")],
+        [CallbackButton(text="📋 Данные по дням", payload="wu_view_days")],
+        [CallbackButton(text="👥 Обновить подписчиков", payload="wu_upd_subs"),
+         CallbackButton(text="🗑 Сбросить дни", payload="wu_clear_days")],
     ])
 
 def _kb_cancel():
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="❌ Отмена", callback_data="wu_cancel")]
-    ])
+    return _make_kb([[CallbackButton(text="❌ Отмена", payload="wu_cancel")]])
 
 def _kb_collecting():
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✅ Готово, читай!", callback_data="wu_photos_done")],
-        [InlineKeyboardButton(text="📝 Без постов (ввести вручную)", callback_data="wu_no_posts")],
-        [InlineKeyboardButton(text="❌ Отмена", callback_data="wu_cancel")],
+    return _make_kb([
+        [CallbackButton(text="✅ Готово, читай!", payload="wu_photos_done")],
+        [CallbackButton(text="📝 Без постов (ввести вручную)", payload="wu_no_posts")],
+        [CallbackButton(text="❌ Отмена", payload="wu_cancel")],
     ])
 
 def _kb_warmups(warmups, action):
-    rows = [[InlineKeyboardButton(text=f"🔥 {w['Название']}", callback_data=f"{action}:{w['ID']}")] for w in warmups]
-    rows.append([InlineKeyboardButton(text="❌ Отмена", callback_data="wu_cancel")])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
+    rows = [[CallbackButton(text=f"🔥 {w['Название']}", payload=f"{action}:{w['ID']}")] for w in warmups]
+    rows.append([CallbackButton(text="❌ Отмена", payload="wu_cancel")])
+    return _make_kb(rows)
 
 
 # ── Команда /warmup ─────────────────────────────────────────────────
 
-@warmup_router.message(Command("warmup"))
-async def cmd_warmup(msg: Message):
-    if msg.from_user.id != _owner_id: return
-    warmup_states.pop(msg.from_user.id, None)
-    await msg.answer("🔥 <b>Анализ прогрева</b>\n\nЧто делаем?", reply_markup=_kb_main())
+@warmup_router.message_created(F.message.body.text == "/warmup")
+async def cmd_warmup(event: MessageCreated):
+    msg = event.message
+    if msg.sender.user_id != _owner_id: return
+    warmup_states.pop(msg.sender.user_id, None)
+    await msg.answer(text="🔥 <b>Анализ прогрева</b>\n\nЧто делаем?", attachments=[_kb_main()])
 
 
 # ── Новый прогрев ───────────────────────────────────────────────────
 
-@warmup_router.callback_query(F.data == "wu_new")
-async def cb_wu_new(cb: CallbackQuery):
-    if cb.from_user.id != _owner_id: return await cb.answer()
-    warmup_states[cb.from_user.id] = {"step": "new_name"}
-    await cb.message.answer("Как называется прогрев?\n<i>Например: Июнь 2026</i>", reply_markup=_kb_cancel())
-    await cb.answer()
+@warmup_router.message_callback(F.callback.payload == "wu_new")
+async def cb_wu_new(event: MessageCallback):
+    if event.callback.user.user_id != _owner_id:
+        await event.bot.send_callback(event.callback.callback_id); return
+    warmup_states[event.callback.user.user_id] = {"step": "new_name"}
+    await event.message.answer(text="Как называется прогрев?\n<i>Например: Июнь 2026</i>", attachments=[_kb_cancel()])
+    await event.bot.send_callback(event.callback.callback_id)
 
 
 # ── Добавить статистику (пачка фото) ───────────────────────────────
 
-@warmup_router.callback_query(F.data == "wu_add_stats")
-async def cb_wu_add_stats(cb: CallbackQuery):
-    if cb.from_user.id != _owner_id: return await cb.answer()
+@warmup_router.message_callback(F.callback.payload == "wu_add_stats")
+async def cb_wu_add_stats(event: MessageCallback):
+    uid = event.callback.user.user_id
+    if uid != _owner_id:
+        await event.bot.send_callback(event.callback.callback_id); return
     warmups = _get_warmups()
     if not warmups:
-        await cb.message.answer("Нет активных прогревов. Создай новый.", reply_markup=_kb_main())
-        return await cb.answer()
+        await event.message.answer(text="Нет активных прогревов. Создай новый.", attachments=[_kb_main()])
+        await event.bot.send_callback(event.callback.callback_id); return
     if len(warmups) == 1:
-        await _start_stats_flow(cb.message, cb.from_user.id, warmups[0])
+        await _start_stats_flow(event.message, uid, warmups[0])
     else:
-        await cb.message.answer("Выбери прогрев:", reply_markup=_kb_warmups(warmups, "wu_sel_stats"))
-    await cb.answer()
+        await event.message.answer(text="Выбери прогрев:", attachments=[_kb_warmups(warmups, "wu_sel_stats")])
+    await event.bot.send_callback(event.callback.callback_id)
 
 
-@warmup_router.callback_query(F.data.startswith("wu_sel_stats:"))
-async def cb_wu_sel_stats(cb: CallbackQuery):
-    wid = cb.data.split(":", 1)[1]
+@warmup_router.message_callback(F.callback.payload.startswith("wu_sel_stats:"))
+async def cb_wu_sel_stats(event: MessageCallback):
+    wid = event.callback.payload.split(":", 1)[1]
     warmups = _get_warmups(only_active=False)
     w = next((x for x in warmups if str(x["ID"]) == wid), None)
-    if not w: return await cb.answer("Не найден")
-    await _start_stats_flow(cb.message, cb.from_user.id, w)
-    await cb.answer()
+    if not w:
+        await event.bot.send_callback(event.callback.callback_id); return
+    await _start_stats_flow(event.message, event.callback.user.user_id, w)
+    await event.bot.send_callback(event.callback.callback_id)
 
 
 async def _start_stats_flow(msg, uid, warmup):
@@ -725,18 +737,22 @@ async def _start_stats_flow(msg, uid, warmup):
     }
     if subs == 0:
         await msg.answer(
-            f"Прогрев: <b>{warmup['Название']}</b>\n\n"
-            "👥 Сколько подписчиков в канале?\n"
-            "<i>Нужно для расчёта вовлечённости. Вводится один раз.</i>",
-            reply_markup=_kb_cancel()
+            text=(
+                f"Прогрев: <b>{warmup['Название']}</b>\n\n"
+                "👥 Сколько подписчиков в канале?\n"
+                "<i>Нужно для расчёта вовлечённости. Вводится один раз.</i>"
+            ),
+            attachments=[_kb_cancel()]
         )
     else:
         await msg.answer(
-            f"Прогрев: <b>{warmup['Название']}</b>\n\n"
-            "📸 Скидывай скрины статистики Телеграма — один за другим.\n"
-            "Когда закончишь — нажми кнопку <b>Готово</b>.\n\n"
-            "Если постов не было — нажми <b>Без постов</b>.",
-            reply_markup=_kb_collecting()
+            text=(
+                f"Прогрев: <b>{warmup['Название']}</b>\n\n"
+                "📸 Скидывай скрины статистики — один за другим.\n"
+                "Когда закончишь — нажми кнопку <b>Готово</b>.\n\n"
+                "Если постов не было — нажми <b>Без постов</b>."
+            ),
+            attachments=[_kb_collecting()]
         )
 
 
@@ -754,86 +770,94 @@ def _start_collect_photos(uid, warmup):
 
 # ── Отчёт ───────────────────────────────────────────────────────────
 
-@warmup_router.callback_query(F.data == "wu_report")
-async def cb_wu_report(cb: CallbackQuery):
-    if cb.from_user.id != _owner_id: return await cb.answer()
+@warmup_router.message_callback(F.callback.payload == "wu_report")
+async def cb_wu_report(event: MessageCallback):
+    uid = event.callback.user.user_id
+    if uid != _owner_id:
+        await event.bot.send_callback(event.callback.callback_id); return
     warmups = _get_warmups()
     if not warmups:
-        await cb.message.answer("Нет активных прогревов.", reply_markup=_kb_main()); return await cb.answer()
+        await event.message.answer(text="Нет активных прогревов.", attachments=[_kb_main()])
+        await event.bot.send_callback(event.callback.callback_id); return
     if len(warmups) == 1:
-        await _send_report(cb.message, warmups[0])
+        await _send_report(event.message, warmups[0])
     else:
-        await cb.message.answer("Выбери прогрев:", reply_markup=_kb_warmups(warmups, "wu_sel_report"))
-    await cb.answer()
+        await event.message.answer(text="Выбери прогрев:", attachments=[_kb_warmups(warmups, "wu_sel_report")])
+    await event.bot.send_callback(event.callback.callback_id)
 
 
-@warmup_router.callback_query(F.data.startswith("wu_sel_report:"))
-async def cb_wu_sel_report(cb: CallbackQuery):
-    wid = cb.data.split(":", 1)[1]
+@warmup_router.message_callback(F.callback.payload.startswith("wu_sel_report:"))
+async def cb_wu_sel_report(event: MessageCallback):
+    wid = event.callback.payload.split(":", 1)[1]
     warmups = _get_warmups(only_active=False)
     w = next((x for x in warmups if str(x["ID"]) == wid), None)
-    if w: await _send_report(cb.message, w)
-    await cb.answer()
+    if w: await _send_report(event.message, w)
+    await event.bot.send_callback(event.callback.callback_id)
 
 
-@warmup_router.callback_query(F.data == "wu_upd_subs")
-async def cb_wu_upd_subs(cb: CallbackQuery):
-    if cb.from_user.id != _owner_id: return await cb.answer()
+@warmup_router.message_callback(F.callback.payload == "wu_upd_subs")
+async def cb_wu_upd_subs(event: MessageCallback):
+    uid = event.callback.user.user_id
+    if uid != _owner_id:
+        await event.bot.send_callback(event.callback.callback_id); return
     warmups = _get_warmups()
     if not warmups:
-        await cb.message.answer("Нет активных прогревов.", reply_markup=_kb_main())
-        return await cb.answer()
+        await event.message.answer(text="Нет активных прогревов.", attachments=[_kb_main()])
+        await event.bot.send_callback(event.callback.callback_id); return
     if len(warmups) == 1:
-        warmup_states[cb.from_user.id] = {
+        warmup_states[uid] = {
             "step": "upd_subscribers",
             "warmup_id": str(warmups[0]["ID"]),
             "warmup_name": warmups[0]["Название"],
         }
-        await cb.message.answer(
-            f"Прогрев: <b>{warmups[0]['Название']}</b>\n\n"
-            "👥 Введи актуальное количество подписчиков:",
-            reply_markup=_kb_cancel()
+        await event.message.answer(
+            text=f"Прогрев: <b>{warmups[0]['Название']}</b>\n\n👥 Введи актуальное количество подписчиков:",
+            attachments=[_kb_cancel()]
         )
     else:
-        await cb.message.answer("Выбери прогрев:", reply_markup=_kb_warmups(warmups, "wu_sel_updsubs"))
-    await cb.answer()
+        await event.message.answer(text="Выбери прогрев:", attachments=[_kb_warmups(warmups, "wu_sel_updsubs")])
+    await event.bot.send_callback(event.callback.callback_id)
 
 
-@warmup_router.callback_query(F.data.startswith("wu_sel_updsubs:"))
-async def cb_wu_sel_updsubs(cb: CallbackQuery):
-    wid = cb.data.split(":", 1)[1]
+@warmup_router.message_callback(F.callback.payload.startswith("wu_sel_updsubs:"))
+async def cb_wu_sel_updsubs(event: MessageCallback):
+    uid = event.callback.user.user_id
+    wid = event.callback.payload.split(":", 1)[1]
     warmups = _get_warmups(only_active=False)
     w = next((x for x in warmups if str(x["ID"]) == wid), None)
-    if not w: return await cb.answer("Не найден")
-    warmup_states[cb.from_user.id] = {"step": "upd_subscribers", "warmup_id": wid, "warmup_name": w["Название"]}
-    await cb.message.answer(
-        f"Прогрев: <b>{w['Название']}</b>\n\n👥 Введи актуальное количество подписчиков:",
-        reply_markup=_kb_cancel()
+    if not w:
+        await event.bot.send_callback(event.callback.callback_id); return
+    warmup_states[uid] = {"step": "upd_subscribers", "warmup_id": wid, "warmup_name": w["Название"]}
+    await event.message.answer(
+        text=f"Прогрев: <b>{w['Название']}</b>\n\n👥 Введи актуальное количество подписчиков:",
+        attachments=[_kb_cancel()]
     )
-    await cb.answer()
+    await event.bot.send_callback(event.callback.callback_id)
 
 
-@warmup_router.callback_query(F.data == "wu_clear_days")
-async def cb_wu_clear_days(cb: CallbackQuery):
-    if cb.from_user.id != _owner_id: return await cb.answer()
+@warmup_router.message_callback(F.callback.payload == "wu_clear_days")
+async def cb_wu_clear_days(event: MessageCallback):
+    uid = event.callback.user.user_id
+    if uid != _owner_id:
+        await event.bot.send_callback(event.callback.callback_id); return
     warmups = _get_warmups()
     if not warmups:
-        await cb.message.answer("Нет активных прогревов.", reply_markup=_kb_main())
-        return await cb.answer()
+        await event.message.answer(text="Нет активных прогревов.", attachments=[_kb_main()])
+        await event.bot.send_callback(event.callback.callback_id); return
     if len(warmups) == 1:
-        await _clear_warmup_days(cb.message, str(warmups[0]["ID"]), warmups[0]["Название"])
+        await _clear_warmup_days(event.message, str(warmups[0]["ID"]), warmups[0]["Название"])
     else:
-        await cb.message.answer("Выбери прогрев для сброса:", reply_markup=_kb_warmups(warmups, "wu_sel_clear"))
-    await cb.answer()
+        await event.message.answer(text="Выбери прогрев для сброса:", attachments=[_kb_warmups(warmups, "wu_sel_clear")])
+    await event.bot.send_callback(event.callback.callback_id)
 
 
-@warmup_router.callback_query(F.data.startswith("wu_sel_clear:"))
-async def cb_wu_sel_clear(cb: CallbackQuery):
-    wid = cb.data.split(":", 1)[1]
+@warmup_router.message_callback(F.callback.payload.startswith("wu_sel_clear:"))
+async def cb_wu_sel_clear(event: MessageCallback):
+    wid = event.callback.payload.split(":", 1)[1]
     warmups = _get_warmups(only_active=False)
     w = next((x for x in warmups if str(x["ID"]) == wid), None)
-    if w: await _clear_warmup_days(cb.message, wid, w["Название"])
-    await cb.answer()
+    if w: await _clear_warmup_days(event.message, wid, w["Название"])
+    await event.bot.send_callback(event.callback.callback_id)
 
 
 async def _clear_warmup_days(msg, warmup_id: str, warmup_name: str):
@@ -846,36 +870,40 @@ async def _clear_warmup_days(msg, warmup_id: str, warmup_name: str):
         for i in reversed(to_delete):
             ws.delete_rows(i + 1)
         await msg.answer(
-            f"✅ Удалено {len(to_delete)} строк по прогреву «{warmup_name}».\n"
-            "Теперь добавь статистику заново через «📊 Добавить статистику».",
-            reply_markup=_kb_main()
+            text=(
+                f"✅ Удалено {len(to_delete)} строк по прогреву «{warmup_name}».\n"
+                "Теперь добавь статистику заново через «📊 Добавить статистику»."
+            ),
+            attachments=[_kb_main()]
         )
     except Exception as e:
         logger.error(f"warmup clear days: {e}")
-        await msg.answer("Ошибка при удалении.", reply_markup=_kb_main())
+        await msg.answer(text="Ошибка при удалении.", attachments=[_kb_main()])
 
 
-@warmup_router.callback_query(F.data == "wu_view_days")
-async def cb_wu_view_days(cb: CallbackQuery):
-    if cb.from_user.id != _owner_id: return await cb.answer()
+@warmup_router.message_callback(F.callback.payload == "wu_view_days")
+async def cb_wu_view_days(event: MessageCallback):
+    uid = event.callback.user.user_id
+    if uid != _owner_id:
+        await event.bot.send_callback(event.callback.callback_id); return
     warmups = _get_warmups()
     if not warmups:
-        await cb.message.answer("Нет активных прогревов.", reply_markup=_kb_main())
-        return await cb.answer()
+        await event.message.answer(text="Нет активных прогревов.", attachments=[_kb_main()])
+        await event.bot.send_callback(event.callback.callback_id); return
     if len(warmups) == 1:
-        await _show_days(cb.message, str(warmups[0]["ID"]), warmups[0]["Название"])
+        await _show_days(event.message, str(warmups[0]["ID"]), warmups[0]["Название"])
     else:
-        await cb.message.answer("Выбери прогрев:", reply_markup=_kb_warmups(warmups, "wu_sel_viewdays"))
-    await cb.answer()
+        await event.message.answer(text="Выбери прогрев:", attachments=[_kb_warmups(warmups, "wu_sel_viewdays")])
+    await event.bot.send_callback(event.callback.callback_id)
 
 
-@warmup_router.callback_query(F.data.startswith("wu_sel_viewdays:"))
-async def cb_wu_sel_viewdays(cb: CallbackQuery):
-    wid = cb.data.split(":", 1)[1]
+@warmup_router.message_callback(F.callback.payload.startswith("wu_sel_viewdays:"))
+async def cb_wu_sel_viewdays(event: MessageCallback):
+    wid = event.callback.payload.split(":", 1)[1]
     warmups = _get_warmups(only_active=False)
     w = next((x for x in warmups if str(x["ID"]) == wid), None)
-    if w: await _show_days(cb.message, wid, w["Название"])
-    await cb.answer()
+    if w: await _show_days(event.message, wid, w["Название"])
+    await event.bot.send_callback(event.callback.callback_id)
 
 
 async def _show_days(msg, warmup_id: str, warmup_name: str):
@@ -887,14 +915,12 @@ async def _show_days(msg, warmup_id: str, warmup_name: str):
         data_rows = [(i + 2, row) for i, row in enumerate(all_rows[1:])
                      if row and str(row[0]) == str(warmup_id)]
         if not data_rows:
-            await msg.answer(f"Нет данных по прогреву «{warmup_name}».", reply_markup=_kb_main())
+            await msg.answer(text=f"Нет данных по прогреву «{warmup_name}».", attachments=[_kb_main()])
             return
 
-        # Строим текст
         lines = [f"📋 <b>{warmup_name}</b> — сохранённые дни:\n"]
         for sheet_row, row in data_rows:
             date = row[2] if len(row) > 2 else "?"
-            # Учитываем оба варианта заголовка (старый и новый с Сумма охватов)
             if "Сумма охватов" in header:
                 posts = row[3] if len(row) > 3 else "?"
                 avg_v = row[5] if len(row) > 5 else "?"
@@ -908,27 +934,28 @@ async def _show_days(msg, warmup_id: str, warmup_name: str):
             lines.append(f"• {date}: постов={posts}, охват≈{avg_v}, продаж={sales_cnt} ({sales_rub}₽)")
 
         lines.append("\nЧтобы удалить конкретный день — нажми кнопку ниже:")
-        await msg.answer("\n".join(lines), parse_mode="HTML")
+        await msg.answer(text="\n".join(lines))
 
-        # Кнопки для удаления каждой строки
         buttons = []
         for sheet_row, row in data_rows:
             date = row[2] if len(row) > 2 else f"строка {sheet_row}"
-            buttons.append([InlineKeyboardButton(
+            buttons.append([CallbackButton(
                 text=f"🗑 Удалить {date}",
-                callback_data=f"wu_del_row:{sheet_row}:{warmup_id}:{warmup_name[:20]}"
+                payload=f"wu_del_row:{sheet_row}:{warmup_id}:{warmup_name[:20]}"
             )])
-        buttons.append([InlineKeyboardButton(text="◀️ Назад", callback_data="wu_back_main")])
-        await msg.answer("Выбери строку для удаления:", reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
+        buttons.append([CallbackButton(text="◀️ Назад", payload="wu_back_main")])
+        await msg.answer(text="Выбери строку для удаления:", attachments=[_make_kb(buttons)])
     except Exception as e:
         logger.error(f"warmup show days: {e}")
-        await msg.answer("Ошибка при загрузке данных.", reply_markup=_kb_main())
+        await msg.answer(text="Ошибка при загрузке данных.", attachments=[_kb_main()])
 
 
-@warmup_router.callback_query(F.data.startswith("wu_del_row:"))
-async def cb_wu_del_row(cb: CallbackQuery):
-    if cb.from_user.id != _owner_id: return await cb.answer()
-    parts = cb.data.split(":", 3)
+@warmup_router.message_callback(F.callback.payload.startswith("wu_del_row:"))
+async def cb_wu_del_row(event: MessageCallback):
+    uid = event.callback.user.user_id
+    if uid != _owner_id:
+        await event.bot.send_callback(event.callback.callback_id); return
+    parts = event.callback.payload.split(":", 3)
     sheet_row = int(parts[1])
     warmup_id = parts[2]
     warmup_name = parts[3] if len(parts) > 3 else ""
@@ -937,181 +964,208 @@ async def cb_wu_del_row(cb: CallbackQuery):
         ss = await asyncio.to_thread(lambda: _gc.open_by_key(_spreadsheet_id))
         ws = await asyncio.to_thread(ss.worksheet, SHEET_WARMUP_DAYS)
         await asyncio.to_thread(ws.delete_rows, sheet_row)
-        await cb.message.answer(f"✅ Строка удалена. Показать оставшиеся данные?",
-                                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                                    [InlineKeyboardButton(text="📋 Да, показать", callback_data=f"wu_sel_viewdays:{warmup_id}")],
-                                    [InlineKeyboardButton(text="◀️ Меню", callback_data="wu_back_main")],
-                                ]))
+        await event.message.answer(
+            text="✅ Строка удалена. Показать оставшиеся данные?",
+            attachments=[_make_kb([
+                [CallbackButton(text="📋 Да, показать", payload=f"wu_sel_viewdays:{warmup_id}")],
+                [CallbackButton(text="◀️ Меню", payload="wu_back_main")],
+            ])]
+        )
     except Exception as e:
         logger.error(f"warmup del row: {e}")
-        await cb.message.answer("Ошибка при удалении строки.", reply_markup=_kb_main())
-    await cb.answer()
+        await event.message.answer(text="Ошибка при удалении строки.", attachments=[_kb_main()])
+    await event.bot.send_callback(event.callback.callback_id)
 
 
-@warmup_router.callback_query(F.data == "wu_back_main")
-async def cb_wu_back_main(cb: CallbackQuery):
-    if cb.from_user.id != _owner_id: return await cb.answer()
-    await cb.message.answer("Меню прогрева:", reply_markup=_kb_main())
-    await cb.answer()
+@warmup_router.message_callback(F.callback.payload == "wu_back_main")
+async def cb_wu_back_main(event: MessageCallback):
+    if event.callback.user.user_id != _owner_id:
+        await event.bot.send_callback(event.callback.callback_id); return
+    await event.message.answer(text="Меню прогрева:", attachments=[_kb_main()])
+    await event.bot.send_callback(event.callback.callback_id)
 
 
-@warmup_router.callback_query(F.data == "wu_stats_ok")
-async def cb_wu_stats_ok(cb: CallbackQuery):
-    if cb.from_user.id != _owner_id: return await cb.answer()
-    state = warmup_states.get(cb.from_user.id, {})
+@warmup_router.message_callback(F.callback.payload == "wu_stats_ok")
+async def cb_wu_stats_ok(event: MessageCallback):
+    uid = event.callback.user.user_id
+    if uid != _owner_id:
+        await event.bot.send_callback(event.callback.callback_id); return
+    state = warmup_states.get(uid, {})
     if state.get("step") == "confirm_stats":
         state["step"] = "day_sales_count"
-        await _ask_next_date(cb.message, state)
-    await cb.answer()
+        await _ask_next_date(event.message, state)
+    await event.bot.send_callback(event.callback.callback_id)
 
 
-@warmup_router.callback_query(F.data == "wu_stats_edit")
-async def cb_wu_stats_edit(cb: CallbackQuery):
-    if cb.from_user.id != _owner_id: return await cb.answer()
-    state = warmup_states.get(cb.from_user.id, {})
+@warmup_router.message_callback(F.callback.payload == "wu_stats_edit")
+async def cb_wu_stats_edit(event: MessageCallback):
+    uid = event.callback.user.user_id
+    if uid != _owner_id:
+        await event.bot.send_callback(event.callback.callback_id); return
+    state = warmup_states.get(uid, {})
     if state.get("step") == "confirm_stats":
         state["step"] = "confirm_stats_edit"
-        await cb.message.answer(
+        await event.message.answer(text=(
             "Напиши исправленные данные — 4 числа через пробел:\n"
-            "<code>постов  охват  лайков  репостов</code>\n"
-            "Пример: <code>5 205 26 10</code>"
-        )
-    await cb.answer()
+            "постов  охват  лайков  репостов\n"
+            "Пример: 5 205 26 10"
+        ))
+    await event.bot.send_callback(event.callback.callback_id)
 
 
-@warmup_router.callback_query(F.data == "wu_stats_skip")
-async def cb_wu_stats_skip(cb: CallbackQuery):
-    if cb.from_user.id != _owner_id: return await cb.answer()
-    state = warmup_states.get(cb.from_user.id, {})
+@warmup_router.message_callback(F.callback.payload == "wu_stats_skip")
+async def cb_wu_stats_skip(event: MessageCallback):
+    uid = event.callback.user.user_id
+    if uid != _owner_id:
+        await event.bot.send_callback(event.callback.callback_id); return
+    state = warmup_states.get(uid, {})
     if state.get("step") == "confirm_stats":
         skipped_date = state["dates_queue"].pop(0)
-        await cb.message.answer(f"🗑 Дата {skipped_date} удалена.")
+        await event.message.answer(text=f"🗑 Дата {skipped_date} удалена.")
         if state["dates_queue"]:
             state["step"] = "confirm_stats"
-            await _ask_confirm_stats(cb.message, state)
+            await _ask_confirm_stats(event.message, state)
         else:
-            await _finalize_all_days(cb.message, state)
-            warmup_states.pop(cb.from_user.id, None)
-    await cb.answer()
+            await _finalize_all_days(event.message, state)
+            warmup_states.pop(uid, None)
+    await event.bot.send_callback(event.callback.callback_id)
 
 
-@warmup_router.callback_query(F.data == "wu_cancel")
-async def cb_wu_cancel(cb: CallbackQuery):
-    warmup_states.pop(cb.from_user.id, None)
-    await cb.message.answer("Отменено.", reply_markup=_kb_main())
-    await cb.answer()
+@warmup_router.message_callback(F.callback.payload == "wu_cancel")
+async def cb_wu_cancel(event: MessageCallback):
+    warmup_states.pop(event.callback.user.user_id, None)
+    await event.message.answer(text="Отменено.", attachments=[_kb_main()])
+    await event.bot.send_callback(event.callback.callback_id)
 
 
-@warmup_router.callback_query(F.data == "wu_no_posts")
-async def cb_wu_no_posts(cb: CallbackQuery):
-    uid = cb.from_user.id
-    if uid != _owner_id: return await cb.answer()
+@warmup_router.message_callback(F.callback.payload == "wu_no_posts")
+async def cb_wu_no_posts(event: MessageCallback):
+    uid = event.callback.user.user_id
+    if uid != _owner_id:
+        await event.bot.send_callback(event.callback.callback_id); return
     state = warmup_states.get(uid)
-    if not state: return await cb.answer()
+    if not state:
+        await event.bot.send_callback(event.callback.callback_id); return
     state["step"] = "no_posts_date"
-    await cb.message.answer(
-        "📅 Введи дату дня (без постов):\n"
-        "Формат: <code>ДД.ММ</code>, например <code>12.06</code>",
-        reply_markup=_kb_cancel()
+    await event.message.answer(
+        text="📅 Введи дату дня (без постов):\nФормат: ДД.ММ, например 12.06",
+        attachments=[_kb_cancel()]
     )
-    await cb.answer()
+    await event.bot.send_callback(event.callback.callback_id)
 
 
-@warmup_router.callback_query(F.data == "wu_photos_done")
-async def cb_wu_photos_done(cb: CallbackQuery):
-    uid = cb.from_user.id
+@warmup_router.message_callback(F.callback.payload == "wu_photos_done")
+async def cb_wu_photos_done(event: MessageCallback):
+    uid = event.callback.user.user_id
     state = warmup_states.get(uid, {})
     photos = state.get("photos", [])
+    await event.bot.send_callback(event.callback.callback_id)
     if not photos:
-        await cb.answer("Ты не отправила ни одного скрина.", show_alert=True)
+        await event.message.answer(text="Ты не отправила ни одного скрина.")
         return
-    await cb.answer()
-    await cb.message.answer(f"⏳ Читаю {len(photos)} скрин(а)…")
+    await event.message.answer(text=f"⏳ Читаю {len(photos)} скрин(а)…")
     try:
         import asyncio
         by_date = await asyncio.to_thread(_parse_stats_images, photos, state.get("subscribers", 0))
     except Exception as e:
         logger.error(f"warmup parse: {e}")
-        await cb.message.answer("Не смог распознать статистику 😔\nПопробуй ещё раз.")
+        await event.message.answer(text="Не смог распознать статистику 😔\nПопробуй ещё раз.")
         warmup_states.pop(uid, None)
         return
     if not by_date:
-        await cb.message.answer("Не нашёл постов на скринах. Попробуй другие скрины.")
+        await event.message.answer(text="Не нашёл постов на скринах. Попробуй другие скрины.")
         warmup_states.pop(uid, None)
         return
     state["by_date"] = by_date
     state["dates_queue"] = list(by_date.keys())
     state["days_entered"] = []
     state["step"] = "confirm_stats"
-    await _ask_confirm_stats(cb.message, state)
+    await _ask_confirm_stats(event.message, state)
 
 
 # ── Обработка фото ──────────────────────────────────────────────────
 
-async def handle_warmup_photo(msg: Message) -> bool:
-    uid = msg.from_user.id
+async def _download_photo_bytes(msg) -> bytes | None:
+    import aiohttp
+    atts = getattr(msg, "attachments", None) or []
+    for att in atts:
+        att_type = getattr(att, "type", None)
+        if att_type and str(att_type).lower() in ("image", "photo"):
+            payload = getattr(att, "payload", None)
+            url = getattr(payload, "url", None) if payload else None
+            if url:
+                async with aiohttp.ClientSession() as s:
+                    async with s.get(url, timeout=aiohttp.ClientTimeout(total=30)) as r:
+                        if r.status == 200:
+                            return await r.read()
+    return None
+
+
+async def handle_warmup_photo(msg) -> bool:
+    uid = msg.sender.user_id
     if uid not in warmup_states: return False
     state = warmup_states[uid]
     if state.get("step") != "collecting_photos": return False
 
-    photo = msg.photo[-1]
-    file = await _bot.get_file(photo.file_id)
-    buf = io.BytesIO()
-    await _bot.download_file(file.file_path, buf)
-    state["photos"].append(buf.getvalue())
+    photo_bytes = await _download_photo_bytes(msg)
+    if not photo_bytes:
+        return False
+    state["photos"].append(photo_bytes)
     count = len(state["photos"])
     kb = _kb_collecting()
     await msg.answer(
-        f"✅ Скрин {count} принят. Скидывай ещё или нажми кнопку.",
-        reply_markup=kb
+        text=f"✅ Скрин {count} принят. Скидывай ещё или нажми кнопку.",
+        attachments=[kb]
     )
     return True
 
 
 # ── Обработка текста ────────────────────────────────────────────────
 
-async def handle_warmup_text(msg: Message) -> bool:
-    uid = msg.from_user.id
+async def handle_warmup_text(msg) -> bool:
+    uid = msg.sender.user_id
     if uid not in warmup_states: return False
     state = warmup_states[uid]
     step = state.get("step")
-    text = msg.text.strip() if msg.text else ""
+    text = (msg.body.text or "").strip() if msg.body else ""
 
     # ── Создание прогрева ──
     if step == "new_name":
         state["warmup_name"] = text; state["step"] = "new_plan_sum"
-        await msg.answer("💰 План по сумме (₽):\n<i>Например: 150000</i>", reply_markup=_kb_cancel())
+        await msg.answer(text="💰 План по сумме (₽):\n<i>Например: 150000</i>", attachments=[_kb_cancel()])
         return True
 
     if step == "new_plan_sum":
         try: state["plan_sum"] = float(text.replace(" ", "").replace(",", "."))
         except Exception:
-            await msg.answer("Введи число, например: 150000"); return True
+            await msg.answer(text="Введи число, например: 150000"); return True
         state["step"] = "new_plan_count"
-        await msg.answer("🎯 Сколько продаж планируешь?", reply_markup=_kb_cancel())
+        await msg.answer(text="🎯 Сколько продаж планируешь?", attachments=[_kb_cancel()])
         return True
 
     if step == "new_plan_count":
         try: state["plan_count"] = int(text.replace(" ", ""))
         except Exception:
-            await msg.answer("Введи число, например: 10"); return True
+            await msg.answer(text="Введи число, например: 10"); return True
         state["step"] = "new_subscribers"
-        await msg.answer("👥 Сколько подписчиков в канале?\n<i>Нужно для расчёта вовлечённости</i>",
-                         reply_markup=_kb_cancel())
+        await msg.answer(text="👥 Сколько подписчиков в канале?\n<i>Нужно для расчёта вовлечённости</i>",
+                         attachments=[_kb_cancel()])
         return True
 
     if step == "new_subscribers":
         try: state["subscribers"] = int(text.replace(" ", "").replace(",", ""))
         except Exception:
-            await msg.answer("Введи число, например: 1200"); return True
-        wid = _create_warmup(state["warmup_name"], state["plan_sum"], state["plan_count"], state["subscribers"])
+            await msg.answer(text="Введи число, например: 1200"); return True
+        _create_warmup(state["warmup_name"], state["plan_sum"], state["plan_count"], state["subscribers"])
         warmup_states.pop(uid, None)
         await msg.answer(
-            f"✅ Прогрев <b>{state['warmup_name']}</b> создан!\n"
-            f"План: {int(state['plan_sum']):,} ₽ / {state['plan_count']} продаж".replace(",", " ") + "\n"
-            f"Подписчиков: {state['subscribers']:,}".replace(",", " ") + "\n\n"
-            "Добавляй статистику через «📊 Добавить статистику».",
-            reply_markup=_kb_main()
+            text=(
+                f"✅ Прогрев <b>{state['warmup_name']}</b> создан!\n"
+                f"План: {int(state['plan_sum']):,} ₽ / {state['plan_count']} продаж".replace(",", " ") + "\n"
+                f"Подписчиков: {state['subscribers']:,}".replace(",", " ") + "\n\n"
+                "Добавляй статистику через «📊 Добавить статистику»."
+            ),
+            attachments=[_kb_main()]
         )
         return True
 
@@ -1119,23 +1173,25 @@ async def handle_warmup_text(msg: Message) -> bool:
     if step in ("set_subscribers", "upd_subscribers"):
         try: subs = int(text.replace(" ", "").replace(",", ""))
         except Exception:
-            await msg.answer("Введи число, например: 1200"); return True
+            await msg.answer(text="Введи число, например: 1200"); return True
         state["subscribers"] = subs
         _save_subscribers(state["warmup_id"], subs)
         if step == "upd_subscribers":
             warmup_states.pop(uid, None)
             await msg.answer(
-                f"✅ Подписчики обновлены: {subs:,}".replace(",", " "),
-                reply_markup=_kb_main()
+                text=f"✅ Подписчики обновлены: {subs:,}".replace(",", " "),
+                attachments=[_kb_main()]
             )
             return True
         state["step"] = "collecting_photos"
         await msg.answer(
-            f"✅ Подписчиков: {subs:,}".replace(",", " ") + "\n\n"
-            "📸 Скидывай скрины статистики Телеграма — один за другим.\n"
-            "Когда закончишь — нажми кнопку <b>Готово</b>.\n\n"
-            "Если постов не было — нажми <b>Без постов</b>.",
-            reply_markup=_kb_collecting()
+            text=(
+                f"✅ Подписчиков: {subs:,}".replace(",", " ") + "\n\n"
+                "📸 Скидывай скрины статистики Телеграма — один за другим.\n"
+                "Когда закончишь — нажми кнопку <b>Готово</b>.\n\n"
+                "Если постов не было — нажми <b>Без постов</b>."
+            ),
+            attachments=[_kb_collecting()]
         )
         return True
 
@@ -1143,10 +1199,12 @@ async def handle_warmup_text(msg: Message) -> bool:
     if step == "collecting_photos":
         if text.lower() not in ("готово", "готов", "всё", "все", "done"):
             await msg.answer(
-                "Скидывай скрины статистики.\n"
-                "Когда все скрины отправлены — нажми <b>Готово</b>.\n"
-                "Если постов не было — нажми <b>Без постов</b>.",
-                reply_markup=_kb_collecting()
+                text=(
+                    "Скидывай скрины статистики.\n"
+                    "Когда все скрины отправлены — нажми <b>Готово</b>.\n"
+                    "Если постов не было — нажми <b>Без постов</b>."
+                ),
+                attachments=[_kb_collecting()]
             )
             return True
 
@@ -1154,24 +1212,23 @@ async def handle_warmup_text(msg: Message) -> bool:
     if step == "collecting_photos" and text.lower() in ("готово", "готов", "всё", "все", "done"):
         photos = state.get("photos", [])
         if not photos:
-            await msg.answer("Ты не отправила ни одного скрина. Скидывай фото или нажми «Отмена».")
+            await msg.answer(text="Ты не отправила ни одного скрина. Скидывай фото или нажми «Отмена».")
             return True
-        await msg.answer(f"⏳ Читаю {len(photos)} скрин(а)…")
+        await msg.answer(text=f"⏳ Читаю {len(photos)} скрин(а)…")
         try:
             import asyncio
             by_date = await asyncio.to_thread(_parse_stats_images, photos, state.get("subscribers", 0))
         except Exception as e:
             logger.error(f"warmup parse: {e}")
-            await msg.answer("Не смог распознать статистику 😔\nПопробуй ещё раз.")
+            await msg.answer(text="Не смог распознать статистику 😔\nПопробуй ещё раз.")
             warmup_states.pop(uid, None)
             return True
 
         if not by_date:
-            await msg.answer("Не нашёл постов на скринах. Попробуй другие скрины.")
+            await msg.answer(text="Не нашёл постов на скринах. Попробуй другие скрины.")
             warmup_states.pop(uid, None)
             return True
 
-        # Показываем что Claude прочитал — просим подтвердить или исправить
         state["by_date"] = by_date
         state["dates_queue"] = list(by_date.keys())
         state["days_entered"] = []
@@ -1200,20 +1257,21 @@ async def handle_warmup_text(msg: Message) -> bool:
             await _ask_confirm_stats(msg, state)
         except Exception:
             await msg.answer(
-                "Напиши 4 числа через пробел:\n"
-                "<code>постов  охват  лайков  репостов</code>\n"
-                "Пример: <code>5 205 26 10</code>"
+                text=(
+                    "Напиши 4 числа через пробел:\n"
+                    "<code>постов  охват  лайков  репостов</code>\n"
+                    "Пример: <code>5 205 26 10</code>"
+                )
             )
         return True
 
     # ── Ввод даты вручную (без постов) ──
     if step == "no_posts_date":
         import re as _re
-        # Принимаем форматы: 12.06, 12.06.2025, 2025-06-12
         date_str = text.strip()
         m = _re.match(r'^(\d{1,2})[.\-/](\d{1,2})(?:[.\-/](\d{2,4}))?$', date_str)
         if not m:
-            await msg.answer("Введи дату в формате ДД.ММ, например: <code>12.06</code>"); return True
+            await msg.answer(text="Введи дату в формате ДД.ММ, например: <code>12.06</code>"); return True
         day, month = int(m.group(1)), int(m.group(2))
         year = int(m.group(3)) if m.group(3) else datetime.now().year
         if year < 100: year += 2000
@@ -1221,9 +1279,8 @@ async def handle_warmup_text(msg: Message) -> bool:
         try:
             d = _date(year, month, day)
         except ValueError:
-            await msg.answer("Неверная дата. Введи в формате ДД.ММ, например: <code>12.06</code>"); return True
+            await msg.answer(text="Неверная дата. Введи в формате ДД.ММ, например: <code>12.06</code>"); return True
         date_key = d.strftime("%Y-%m-%d")
-        # Создаём запись с 0 постами
         if "by_date" not in state:
             state["by_date"] = {}
         state["by_date"][date_key] = {"posts": 0, "avg_views": 0, "total_views": 0,
@@ -1238,23 +1295,22 @@ async def handle_warmup_text(msg: Message) -> bool:
     if step == "day_sales_count":
         try: state["cur_sales_count"] = int(text.replace(" ", ""))
         except Exception:
-            await msg.answer("Введи число продаж, например: 3"); return True
+            await msg.answer(text="Введи число продаж, например: 3"); return True
         state["step"] = "day_sales_sum"
-        await msg.answer("💰 Сумма продаж за этот день (₽):", reply_markup=_kb_cancel())
+        await msg.answer(text="💰 Сумма продаж за этот день (₽):", attachments=[_kb_cancel()])
         return True
 
     if step == "day_sales_sum":
         try: state["cur_sales_sum"] = float(text.replace(" ", "").replace(",", "."))
         except Exception:
-            await msg.answer("Введи сумму, например: 4500"); return True
+            await msg.answer(text="Введи сумму, например: 4500"); return True
         state["step"] = "day_commission"
-        await msg.answer("💸 Комиссия/расходы за день (₽, или 0):", reply_markup=_kb_cancel())
+        await msg.answer(text="💸 Комиссия/расходы за день (₽, или 0):", attachments=[_kb_cancel()])
         return True
 
     if step == "day_commission":
         try: commission = float(text.replace(" ", "").replace(",", "."))
         except Exception: commission = 0.0
-        # Сохраняем текущую дату
         cur_date = state["dates_queue"][0]
         d = state["by_date"][cur_date]
         state["days_entered"].append({
@@ -1270,11 +1326,9 @@ async def handle_warmup_text(msg: Message) -> bool:
         state["dates_queue"].pop(0)
 
         if state["dates_queue"]:
-            # Следующая дата — сначала подтверждение статистики
             state["step"] = "confirm_stats"
             await _ask_confirm_stats(msg, state)
         else:
-            # Все даты заполнены — сохраняем и генерируем бублик
             await _finalize_all_days(msg, state)
             warmup_states.pop(uid, None)
         return True
@@ -1282,40 +1336,45 @@ async def handle_warmup_text(msg: Message) -> bool:
     return False
 
 
-async def _ask_confirm_stats(msg: Message, state: dict):
+async def _ask_confirm_stats(msg, state: dict):
+    cur_date = state["dates_queue"][0]
+    d = state["by_date"][cur_date]
+    total_dates = len(state["by_date"])
+    done = total_dates - len(state["dates_queue"])
+    kb = _make_kb([
+        [CallbackButton(text="✅ Да, верно", payload="wu_stats_ok")],
+        [CallbackButton(text="✏️ Изменить", payload="wu_stats_edit")],
+        [CallbackButton(text="🗑 Удалить эту дату", payload="wu_stats_skip")],
+    ])
+    await msg.answer(
+        text=(
+            f"📅 <b>{cur_date}</b> ({done+1}/{total_dates}) — прочитал со скрина:\n\n"
+            f"  Постов: <b>{d['posts']}</b>\n"
+            f"  Ср. охват: <b>{d['avg_views']:.0f}</b>\n"
+            f"  Лайки: <b>{d['likes']}</b>\n"
+            f"  Репосты: <b>{d['reposts']}</b>"
+        ),
+        attachments=[kb]
+    )
+
+
+async def _ask_next_date(msg, state: dict):
     cur_date = state["dates_queue"][0]
     d = state["by_date"][cur_date]
     total_dates = len(state["by_date"])
     done = total_dates - len(state["dates_queue"])
     await msg.answer(
-        f"📅 <b>{cur_date}</b> ({done+1}/{total_dates}) — прочитал со скрина:\n\n"
-        f"  Постов: <b>{d['posts']}</b>\n"
-        f"  Ср. охват: <b>{d['avg_views']:.0f}</b>\n"
-        f"  Лайки: <b>{d['likes']}</b>\n"
-        f"  Репосты: <b>{d['reposts']}</b>",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="✅ Да, верно", callback_data="wu_stats_ok")],
-            [InlineKeyboardButton(text="✏️ Изменить", callback_data="wu_stats_edit")],
-            [InlineKeyboardButton(text="🗑 Удалить эту дату", callback_data="wu_stats_skip")],
-        ])
+        text=(
+            f"📅 <b>{cur_date}</b> ({done+1}/{total_dates})\n"
+            f"  Постов: {d['posts']}, ср. охват: {d['avg_views']:.0f}\n"
+            f"  Лайки: {d['likes']}, репосты: {d['reposts']}\n\n"
+            "Сколько продаж в этот день?"
+        ),
+        attachments=[_kb_cancel()]
     )
 
 
-async def _ask_next_date(msg: Message, state: dict):
-    cur_date = state["dates_queue"][0]
-    d = state["by_date"][cur_date]
-    total_dates = len(state["by_date"])
-    done = total_dates - len(state["dates_queue"])
-    await msg.answer(
-        f"📅 <b>{cur_date}</b> ({done+1}/{total_dates})\n"
-        f"  Постов: {d['posts']}, ср. охват: {d['avg_views']:.0f}\n"
-        f"  Лайки: {d['likes']}, репосты: {d['reposts']}\n\n"
-        "Сколько продаж в этот день?",
-        reply_markup=_kb_cancel()
-    )
-
-
-async def _finalize_all_days(msg: Message, state: dict):
+async def _finalize_all_days(msg, state: dict):
     warmup_id = state["warmup_id"]
     warmup_name = state["warmup_name"]
     plan_sum = state["plan_sum"]
@@ -1383,17 +1442,20 @@ async def _finalize_all_days(msg: Message, state: dict):
             f"🎯 Продаж: <b>{running_count}</b> из {plan_count}"
             + ("\n\n🔗 <b>Посты → продажи:</b>\n" + "\n".join(corr_lines) if corr_lines else "")
         )
-        await msg.answer_photo(BufferedInputFile(png, filename="warmup.png"), caption=caption)
+        photo_buf = InputMediaBuffer(buffer=png, filename="warmup.png")
+        await msg.answer(text=caption, attachments=[photo_buf])
     except Exception as e:
         logger.error(f"warmup donut: {e}")
         await msg.answer(
-            f"✅ Данные сохранены!\n"
-            f"💰 Итого: {int(running_sum):,} ₽ ({running_sum/plan_sum*100:.1f}% плана)".replace(",", " ")
+            text=(
+                f"✅ Данные сохранены!\n"
+                f"💰 Итого: {int(running_sum):,} ₽ ({running_sum/plan_sum*100:.1f}% плана)".replace(",", " ")
+            )
         )
-    await msg.answer("Что дальше?", reply_markup=_kb_main())
+    await msg.answer(text="Что дальше?", attachments=[_kb_main()])
 
 
-async def _send_report(msg: Message, warmup: dict):
+async def _send_report(msg, warmup: dict):
     wid = str(warmup["ID"])
     days = _get_warmup_days(wid)
     if not days:
@@ -1420,8 +1482,11 @@ async def _send_report(msg: Message, warmup: dict):
         subs = int(warmup.get("Подписчики", 0) or 0)
         png = await asyncio.to_thread(_generate_donut, warmup["Название"], plan_sum, plan_count,
                                       total_sum, total_count, avg_views, avg_eng, days, subs)
-        await msg.answer_photo(BufferedInputFile(png, filename="warmup_report.png"),
-                               caption=f"📈 Отчёт по прогреву <b>{warmup['Название']}</b>")
+        photo_buf = InputMediaBuffer(buffer=png, filename="warmup_report.png")
+        await msg.answer(
+            text=f"📈 Отчёт по прогреву <b>{warmup['Название']}</b>",
+            attachments=[photo_buf]
+        )
     except Exception as e:
         logger.error(f"warmup report: {e}")
         await msg.answer("Ошибка при генерации отчёта.")

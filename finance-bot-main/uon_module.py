@@ -14,8 +14,10 @@
 """
 import os, logging
 import aiohttp
-from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from maxapi import Router, F
+from maxapi.types import MessageCreated, MessageCallback, CallbackButton, LinkButton
+from maxapi.types.attachments import AttachmentButton, ButtonsPayload
+from maxapi.enums import AttachmentType
 
 logger = logging.getLogger(__name__)
 
@@ -458,37 +460,36 @@ def fmt_lead_card(lead: dict) -> tuple[str, str]:
     return "\n".join(lines), crm_lead_url(lid)
 
 
-def _kb_for_lead(url: str) -> InlineKeyboardMarkup | None:
+def _kb_for_lead(url: str) -> AttachmentButton | None:
     if not url: return None
-    return InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="🔗 Открыть в U-ON", url=url)
-    ]])
+    return AttachmentButton(
+        type=AttachmentType.INLINE_KEYBOARD,
+        payload=ButtonsPayload(buttons=[[LinkButton(text="🔗 Открыть в U-ON", url=url)]])
+    )
 
 
-async def start_search(msg: Message):
-    """Точка входа из меню «📦 Заказы → 🔍 Найти заявку»."""
+async def start_search(msg):
+    """Точка входа из меню «📦 Заказы → 🔍 Найти заявку». msg — maxapi Message."""
     if not is_configured():
         await msg.answer(
-            "U-ON не настроен. Добавь в Railway → Variables:\n"
-            "<code>UON_API_KEY</code> и <code>UON_ACCOUNT_ID</code>.",
-            parse_mode="HTML"
+            "U-ON не настроен. Добавь переменные окружения:\n"
+            "<code>UON_API_KEY</code> и <code>UON_ACCOUNT_ID</code>."
         )
         return
-    uon_states[msg.from_user.id] = {"step": "uon_search"}
+    uon_states[msg.sender.user_id] = {"step": "uon_search"}
     await msg.answer(
         "Введи фамилию, номер заявки или телефон:\n"
         "• <i>Иванова</i> — поиск по ФИО заказчика/туриста\n"
         "• <i>727</i> — поиск по номеру заявки\n"
-        "• <i>+7 999 123 45 67</i> — поиск по телефону",
-        parse_mode="HTML",
+        "• <i>+7 999 123 45 67</i> — поиск по телефону"
     )
 
 
-async def handle_text(msg: Message) -> bool:
-    """Обработать ввод поискового запроса. Возвращает True если шаг был активен."""
-    uid = msg.from_user.id
+async def handle_text(msg) -> bool:
+    """Обработать ввод поискового запроса. msg — maxapi Message. Возвращает True если шаг активен."""
+    uid = msg.sender.user_id
     if uon_states.get(uid, {}).get("step") != "uon_search": return False
-    phrase = (msg.text or "").strip()
+    phrase = (msg.body.text or "").strip()
     if len(phrase) < 2:
         await msg.answer("Минимум 2 символа. Попробуй ещё раз:")
         return True
@@ -557,18 +558,18 @@ async def handle_text(msg: Message) -> bool:
                 f"Поищи вручную в U-ON — там поиск по туристам работает через приложение:")
         kb = None
         if search_url:
-            kb = InlineKeyboardMarkup(inline_keyboard=[[
-                InlineKeyboardButton(text="🔍 Открыть U-ON", url=search_url)
-            ]])
+            kb = AttachmentButton(
+                type=AttachmentType.INLINE_KEYBOARD,
+                payload=ButtonsPayload(buttons=[[LinkButton(text="🔍 Открыть U-ON", url=search_url)]])
+            )
         if diag_parts:
             text += f"\n\n<i>Диагностика API: {'; '.join(diag_parts[:2])}</i>"
-        try: await w.edit_text(text, reply_markup=kb, parse_mode="HTML")
+        try:
+            atts = [kb] if kb else None
+            await w.edit(text=text, attachments=atts)
         except Exception: pass
         return True
 
-    # Кэшируем все найденные заявки — в callback по кнопке списка возьмём
-    # их отсюда, потому что отдельный get-by-id эндпоинт в U-ON не работает
-    # (см. комментарий к uon_leads_cache).
     uid_cache: dict[str, dict] = {}
     for ld in all_leads:
         lid_str = str(_pick(ld, "id", "lead_id") or "")
@@ -578,22 +579,21 @@ async def handle_text(msg: Message) -> bool:
     if len(all_leads) == 1:
         ld = all_leads[0]
         lid = _pick(ld, "id", "lead_id")
-        # Логируем доступные ключи — пригодится, чтобы понять, какие поля
-        # U-ON реально отдаёт в листинге (для подгонки fmt_lead_card).
         if isinstance(ld, dict):
             logger.info(f"U-ON lead #{lid} keys: {sorted(ld.keys())}")
         text, url = fmt_lead_card(ld)
-        try: await w.edit_text(text, reply_markup=_kb_for_lead(url), parse_mode="HTML")
+        kb = _kb_for_lead(url)
+        atts = [kb] if kb else None
+        try:
+            await w.edit(text=text, attachments=atts)
         except Exception:
-            await msg.answer(text, reply_markup=_kb_for_lead(url), parse_mode="HTML")
+            await msg.answer(text, attachments=atts)
         return True
 
     # Несколько — показать список
-    kb_rows = []
+    btn_rows = []
     for ld in all_leads[:20]:
         cl = ld.get("_client") or {}
-        # Если заявка нашлась через скан туристов — в карточке списка показываем
-        # фамилию туриста, иначе — заказчика.
         mt = ld.get("_matched_tourist")
         person = mt if isinstance(mt, dict) else (cl if cl else ld)
         surname = _pick(person, "u_surname", "surname", "client_surname", "last_name")
@@ -604,28 +604,33 @@ async def handle_text(msg: Message) -> bool:
         lid = _pick(ld, "id", "lead_id")
         label = f"#{lid} {surname} {initial} {country} {df}".strip()
         if not lid: continue
-        kb_rows.append([InlineKeyboardButton(text=label[:60], callback_data=f"uon_l_{lid}")])
+        btn_rows.append([CallbackButton(text=label[:60], payload=f"uon_l_{lid}")])
     head = f"Найдено заявок: <b>{len(all_leads)}</b>. Выбери:"
-    try: await w.edit_text(head, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb_rows), parse_mode="HTML")
+    kb_list = AttachmentButton(
+        type=AttachmentType.INLINE_KEYBOARD,
+        payload=ButtonsPayload(buttons=btn_rows)
+    )
+    try:
+        await w.edit(text=head, attachments=[kb_list])
     except Exception:
-        await msg.answer(head, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb_rows), parse_mode="HTML")
+        await msg.answer(head, attachments=[kb_list])
     return True
 
 
-@uon_router.callback_query(F.data.startswith("uon_l_"))
-async def cb_uon_lead(cb: CallbackQuery):
-    lid = cb.data[len("uon_l_"):]
-    uid = cb.from_user.id
-    # Сначала кэш последнего поиска — там лежит уже полученная запись.
+@uon_router.message_callback(F.callback.payload.startswith("uon_l_"))
+async def cb_uon_lead(event: MessageCallback):
+    lid = event.callback.payload[len("uon_l_"):]
+    uid = event.callback.user.user_id
     lead = (uon_leads_cache.get(uid) or {}).get(lid)
-    # На всякий случай пробуем и одиночный get_lead — если этот эндпоинт
-    # когда-то начнёт отдавать более полные данные, переключимся на них.
     if not isinstance(lead, dict):
         lead = await get_lead(lid)
     if not lead:
-        await cb.answer("Заявка не найдена в кэше — повтори поиск.", show_alert=True); return
+        await event.bot.send_callback(event.callback.callback_id, notification="Заявка не найдена — повтори поиск.")
+        return
     if isinstance(lead, dict):
         logger.info(f"U-ON lead #{lid} keys: {sorted(lead.keys())}")
     text, url = fmt_lead_card(lead)
-    await cb.message.answer(text, reply_markup=_kb_for_lead(url), parse_mode="HTML")
-    await cb.answer()
+    kb = _kb_for_lead(url)
+    atts = [kb] if kb else None
+    await event.message.answer(text, attachments=atts)
+    await event.bot.send_callback(event.callback.callback_id)

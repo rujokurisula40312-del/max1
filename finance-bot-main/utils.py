@@ -1,4 +1,4 @@
-"""Общие утилиты для finance-bot."""
+"""Общие утилиты для finance-bot (Max Messenger)."""
 import json, re, logging, time
 import gspread
 
@@ -111,10 +111,10 @@ def format_num(v) -> str:
         return str(v)
 
 
-# ==================== Markdown → Telegram HTML ====================
+# ==================== Markdown → HTML ====================
 
 def md_to_html(text: str) -> str:
-    """Конвертирует Markdown в Telegram HTML и убирает невалидные теги."""
+    """Конвертирует Markdown в HTML (поддерживается Max Messenger)."""
     text = re.sub(r'```[\s\S]*?```', '', text)
     text = re.sub(r'^#{1,4}\s*(.+)$', r'<b>\1</b>', text, flags=re.MULTILINE)
     text = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', text)
@@ -185,21 +185,40 @@ def fuzzy_match(query: str, text: str) -> bool:
 # ==================== FakeMsg ====================
 
 class FakeMsg:
-    """Обёртка для передачи распознанного текста в обработчик как Message."""
-    def __init__(self, original, new_text):
+    """Обёртка для передачи распознанного текста в обработчик как Message (Max API).
+
+    Оборачивает объект maxapi.types.message.Message, подменяя text.
+    Используется при распознавании голосовых сообщений — передаёт
+    распознанный текст в тот же хендлер, что и текстовое сообщение.
+    """
+    def __init__(self, original_message, new_text):
+        # original_message — объект maxapi Message (event.message)
+        self._msg = original_message
         self.text = new_text
         self.caption = None
-        self.from_user = original.from_user
-        self.chat = original.chat
-        self.answer = original.answer
-        # Атрибуты, которые могут понадобиться более «толстым» обработчикам
-        # (например, nutrition._process_calc_and_reply вызывает answer_photo и
-        # читает sent.message_id). Берём напрямую с оригинального Message.
-        self.answer_photo = getattr(original, "answer_photo", None)
-        self.message_id = getattr(original, "message_id", None)
         self.photo = None
         self.document = None
         self.voice = None
+
+    @property
+    def sender(self):
+        return self._msg.sender
+
+    @property
+    def recipient(self):
+        return self._msg.recipient
+
+    async def answer(self, text, **kwargs):
+        return await self._msg.answer(text, **kwargs)
+
+    async def answer_photo(self, *args, **kwargs):
+        fn = getattr(self._msg, "answer_photo", None)
+        if fn:
+            return await fn(*args, **kwargs)
+
+    @property
+    def body(self):
+        return self._msg.body
 
 
 # ==================== Google Sheets retry ====================

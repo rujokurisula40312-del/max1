@@ -5,10 +5,19 @@
 """
 import asyncio, base64, io, json, logging, time, html, os
 from datetime import datetime, timedelta, timezone, date
-from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, BufferedInputFile
-from aiogram.filters import Command
+from maxapi import Router, F
+from maxapi.types import MessageCreated, MessageCallback, CallbackButton
+from maxapi.types.attachments import AttachmentButton, ButtonsPayload
+from maxapi.types.input_media import InputMediaBuffer
+from maxapi.enums import AttachmentType
 from utils import safe_phone
+
+
+def _make_kb(rows: list[list]) -> AttachmentButton:
+    return AttachmentButton(
+        type=AttachmentType.INLINE_KEYBOARD,
+        payload=ButtonsPayload(buttons=rows),
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -1099,22 +1108,22 @@ def render_weight_chart_png(points: list[tuple[date, float]]) -> bytes:
 
 # ==================== Keyboards ====================
 
-def kb_meal_actions(meal_id: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
+def kb_meal_actions(meal_id: int) -> AttachmentButton:
+    return _make_kb([
         [
-            InlineKeyboardButton(text="✏️ Исправить",  callback_data=f"nutr:e:{meal_id}"),
-            InlineKeyboardButton(text="🍽 Не доела",   callback_data=f"nutr:l:{meal_id}"),
+            CallbackButton(text="✏️ Исправить", payload=f"nutr:e:{meal_id}"),
+            CallbackButton(text="🍽 Не доела",  payload=f"nutr:l:{meal_id}"),
         ],
         [
-            InlineKeyboardButton(text="🗑 Удалить",    callback_data=f"nutr:d:{meal_id}"),
+            CallbackButton(text="🗑 Удалить",   payload=f"nutr:d:{meal_id}"),
         ],
     ])
 
 
-def kb_confirm_delete(meal_id: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="✅ Точно удалить", callback_data=f"nutr:dy:{meal_id}"),
-        InlineKeyboardButton(text="↩ Отмена",        callback_data=f"nutr:dn:{meal_id}"),
+def kb_confirm_delete(meal_id: int) -> AttachmentButton:
+    return _make_kb([[
+        CallbackButton(text="✅ Точно удалить", payload=f"nutr:dy:{meal_id}"),
+        CallbackButton(text="↩ Отмена",        payload=f"nutr:dn:{meal_id}"),
     ]])
 
 
@@ -1132,18 +1141,18 @@ def _today_totals(user_id: int) -> dict:
     return out
 
 
-async def _process_calc_and_reply(msg: Message, calc: dict, *,
+async def _process_calc_and_reply(msg, calc: dict, *,
                                   source: str, raw_input: str = "",
                                   photo_file_id: str = ""):
-    uid = msg.from_user.id
+    uid = msg.sender.user_id
     if isinstance(calc, dict) and calc.get("error"):
         err = calc["error"]
         if err == "no_food_detected":
-            await msg.answer("На фото не вижу еды. Пришли другое фото или опиши текстом.")
+            await msg.answer(text="На фото не вижу еды. Пришли другое фото или опиши текстом.")
         elif err == "no_food_described":
-            await msg.answer("В сообщении нет описания еды. Опиши, что съела (например: «грибной суп 250г»).")
+            await msg.answer(text="В сообщении нет описания еды. Опиши, что съела (например: «грибной суп 250г»).")
         else:
-            await msg.answer(f"Не получилось разобрать: {err}")
+            await msg.answer(text=f"Не получилось разобрать: {err}")
         return
 
     settings = await asyncio.to_thread(get_settings, uid)
@@ -1156,8 +1165,8 @@ async def _process_calc_and_reply(msg: Message, calc: dict, *,
         "source": source,
         "raw_input": raw_input,
         "photo_file_id": photo_file_id,
-        "tg_chat_id": msg.chat.id,
-        "tg_msg_id": 0,  # обновим после отправки
+        "tg_chat_id": uid,
+        "tg_msg_id": 0,
     }
 
     # вставка в Sheets
@@ -1165,7 +1174,7 @@ async def _process_calc_and_reply(msg: Message, calc: dict, *,
         meal_id = await asyncio.to_thread(insert_meal, meal_payload)
     except Exception as e:
         logger.error(f"nutrition: insert_meal failed: {e}")
-        await msg.answer("Не смогла записать в дневник (ошибка таблицы).")
+        await msg.answer(text="Не смогла записать в дневник (ошибка таблицы).")
         return
 
     day_total = await asyncio.to_thread(_today_totals, uid)
@@ -1176,33 +1185,24 @@ async def _process_calc_and_reply(msg: Message, calc: dict, *,
         png = None
 
     caption = build_meal_caption(calc, meal_id)
+    kb = kb_meal_actions(meal_id)
     if png:
-        sent = await msg.answer_photo(
-            BufferedInputFile(png, filename=f"meal_{meal_id}.png"),
-            caption=caption or None,
-            reply_markup=kb_meal_actions(meal_id),
-        )
+        photo_buf = InputMediaBuffer(buffer=png, filename=f"meal_{meal_id}.png")
+        await msg.answer(text=caption or " ", attachments=[photo_buf])
+        await msg.answer(text="⬆️ Карточка выше", attachments=[kb])
     else:
-        # фолбэк: голый текст-резюме без таблицы
         total = calc.get("total") or {}
-        sent = await msg.answer(
-            f"<b>{_esc(total.get('name', 'Приём пищи'))}</b>\n"
-            f"{int(round(_f(total.get('kcal'))))} ккал, "
-            f"Б {_fmt_num(total.get('protein'))} / "
-            f"Ж {_fmt_num(total.get('fat'))} / "
-            f"У {_fmt_num(total.get('carbs'))} г\n"
-            f"#РАСЧЁТ №{meal_id}",
-            reply_markup=kb_meal_actions(meal_id),
+        await msg.answer(
+            text=(
+                f"<b>{_esc(total.get('name', 'Приём пищи'))}</b>\n"
+                f"{int(round(_f(total.get('kcal'))))} ккал, "
+                f"Б {_fmt_num(total.get('protein'))} / "
+                f"Ж {_fmt_num(total.get('fat'))} / "
+                f"У {_fmt_num(total.get('carbs'))} г\n"
+                f"#РАСЧЁТ №{meal_id}"
+            ),
+            attachments=[kb],
         )
-
-    # допишем tg_msg_id для будущих edit-ов
-    try:
-        ws, idx, _ = await asyncio.to_thread(_find_meal_row, meal_id)
-        if idx:
-            await asyncio.to_thread(ws.update_cell, idx,
-                                    MEALS_HEADER.index("tg_msg_id") + 1, sent.message_id)
-    except Exception as e:
-        logger.warning(f"nutrition: failed to save tg_msg_id: {e}")
 
     total = calc.get("total", {}) or {}
     logger.info(
@@ -1213,10 +1213,10 @@ async def _process_calc_and_reply(msg: Message, calc: dict, *,
 
 # ==================== Хэндлеры — вход через bot.py ====================
 
-async def handle_text(msg: Message) -> bool:
+async def handle_text(msg) -> bool:
     """Возвращает True если сообщение обработано модулем.
     Вызывается из bot.py.handle_text перед общим fallback."""
-    uid = msg.from_user.id
+    uid = msg.sender.user_id
     if not is_owner(uid):
         return False
 
@@ -1226,12 +1226,11 @@ async def handle_text(msg: Message) -> bool:
         await _apply_correction(msg, state["meal_id"])
         return True
     if state and state.get("step") == "wait_leftover":
-        await _apply_leftover(msg, state["meal_id"], text=msg.text or "")
+        await _apply_leftover(msg, state["meal_id"], text=(msg.body.text or ""))
         return True
     if state and state.get("step") == "wait_weight":
         if await _try_log_weight(msg):
             return True
-        # не число — выходим из state и обрабатываем как обычно
         nutr_states.pop(uid, None)
     if state and state.get("step") == "wait_goal_kcal":
         if await _try_set_goal_kcal(msg):
@@ -1239,17 +1238,17 @@ async def handle_text(msg: Message) -> bool:
         nutr_states.pop(uid, None)
 
     # Свободный текст-еда
-    text = (msg.text or "").strip()
+    text = (msg.body.text or "").strip()
     if not text:
         return False
     await _recognize_text_food(msg, text)
     return True
 
 
-async def _try_log_weight(msg: Message) -> bool:
+async def _try_log_weight(msg) -> bool:
     """Пытается распарсить msg.text как вес. Возвращает True, если записано."""
-    uid = msg.from_user.id
-    raw = (msg.text or "").strip().lower()
+    uid = msg.sender.user_id
+    raw = (msg.body.text or "").strip().lower()
     raw = raw.replace("кг", "").replace("kg", "").strip().replace(",", ".")
     try:
         w = float(raw)
@@ -1259,14 +1258,14 @@ async def _try_log_weight(msg: Message) -> bool:
         return False
     await asyncio.to_thread(log_weight, uid, w)
     nutr_states.pop(uid, None)
-    await msg.answer(f"Записала: <b>{w:.1f}</b> кг ({_today_msk().isoformat()}).\nГрафик: /вес_график")
+    await msg.answer(text=f"Записала: <b>{w:.1f}</b> кг ({_today_msk().isoformat()}).\nГрафик: /вес_график")
     return True
 
 
-async def _try_set_goal_kcal(msg: Message) -> bool:
+async def _try_set_goal_kcal(msg) -> bool:
     """Пытается распарсить msg.text как дневную цель ккал. Возвращает True если записано."""
-    uid = msg.from_user.id
-    raw = (msg.text or "").strip().lower()
+    uid = msg.sender.user_id
+    raw = (msg.body.text or "").strip().lower()
     raw = raw.replace("ккал", "").replace("kcal", "").strip().replace(",", ".")
     try:
         kcal = int(float(raw))
@@ -1276,46 +1275,53 @@ async def _try_set_goal_kcal(msg: Message) -> bool:
         return False
     await asyncio.to_thread(set_settings, uid, daily_kcal=kcal)
     nutr_states.pop(uid, None)
-    await msg.answer(f"Ок, дневная цель: <b>{kcal}</b> ккал.")
+    await msg.answer(text=f"Ок, дневная цель: <b>{kcal}</b> ккал.")
     return True
 
 
-async def handle_photo(msg: Message) -> bool:
+async def _download_photo_from_attachment(msg) -> bytes | None:
+    """Скачивает первое фото из attachments сообщения через HTTP."""
+    import aiohttp
+    atts = getattr(msg, "attachments", None) or []
+    for att in atts:
+        att_type = getattr(att, "type", None)
+        if att_type and str(att_type).lower() in ("image", "photo"):
+            payload = getattr(att, "payload", None)
+            url = getattr(payload, "url", None) if payload else None
+            if url:
+                try:
+                    async with aiohttp.ClientSession() as s:
+                        async with s.get(url, timeout=aiohttp.ClientTimeout(total=30)) as r:
+                            return await r.read()
+                except Exception as e:
+                    logger.error(f"nutrition: download photo from url: {e}")
+    return None
+
+
+async def handle_photo(msg) -> bool:
     """Фото от владельца → еда. Вызывается из bot.py.handle_photo."""
-    uid = msg.from_user.id
+    uid = msg.sender.user_id
     if not is_owner(uid):
-        return False
-    photo = None
-    if msg.photo:
-        photo = msg.photo[-1]
-    elif msg.document and (msg.document.mime_type or "").lower().startswith("image/"):
-        photo = msg.document
-    if not photo:
         return False
 
     # Если в состоянии «не доела» — это фото остатков
     state = nutr_states.get(uid)
     if state and state.get("step") == "wait_leftover":
-        w = await msg.answer("Считаю остатки…")
-        try:
-            f = await bot_instance.get_file(photo.file_id)
-            data = (await bot_instance.download_file(f.file_path)).read()
-        except Exception as e:
-            logger.error(f"nutrition: download leftover photo: {e}")
-            try: await w.edit_text("Не удалось скачать фото.")
+        w = await msg.answer(text="Считаю остатки…")
+        data = await _download_photo_from_attachment(msg)
+        if data is None:
+            try: await w.message.edit(text="Не удалось скачать фото.")
             except Exception: pass
             return True
-        try: await w.delete()
+        try: await w.message.delete()
         except Exception: pass
         await _apply_leftover(
             msg, state["meal_id"],
-            text=(msg.caption or "").strip() or None,
+            text=(getattr(msg.body, "caption", None) or "").strip() or None,
             photo_bytes=data,
         )
         return True
 
-    # Если в любом другом FSM-состоянии (правка/вес/цель) пришло фото —
-    # явно уведомляем юзера, что выходим из режима ожидания.
     if state and state.get("step") in {"wait_correction", "wait_weight", "wait_goal_kcal"}:
         nutr_states.pop(uid, None)
         prev = state["step"]
@@ -1325,65 +1331,58 @@ async def handle_photo(msg: Message) -> bool:
             "wait_goal_kcal":  "Отменила ожидание цели",
         }
         try:
-            await msg.answer(f"{hint_map.get(prev, 'Сбросила режим')}, обрабатываю как новое блюдо.")
+            await msg.answer(text=f"{hint_map.get(prev, 'Сбросила режим')}, обрабатываю как новое блюдо.")
         except Exception:
             pass
 
-    w = await msg.answer("Считаю калории…")
-    try:
-        f = await bot_instance.get_file(photo.file_id)
-        data = (await bot_instance.download_file(f.file_path)).read()
-    except Exception as e:
-        logger.error(f"nutrition: download photo: {e}")
-        try: await w.edit_text("Не удалось скачать фото.")
+    w = await msg.answer(text="Считаю калории…")
+    data = await _download_photo_from_attachment(msg)
+    if data is None:
+        try: await w.message.edit(text="Не удалось скачать фото.")
         except Exception: pass
         return True
 
-    caption = (msg.caption or "").strip()
+    caption = (getattr(msg.body, "caption", None) or "").strip()
     try:
         calc = await calculate_meal(text=caption or None, photo_bytes=data)
     except Exception as e:
         logger.error(f"nutrition: calc photo failed: {e}")
-        try: await w.edit_text("Не получилось распознать. Попробуй ещё раз или опиши текстом.")
+        try: await w.message.edit(text="Не получилось распознать. Попробуй ещё раз или опиши текстом.")
         except Exception: pass
         return True
-    try: await w.delete()
+    try: await w.message.delete()
     except Exception: pass
     await _process_calc_and_reply(
         msg, calc, source="photo",
-        raw_input=caption, photo_file_id=photo.file_id,
+        raw_input=caption, photo_file_id="",
     )
     return True
 
 
-async def _recognize_text_food(msg: Message, text: str):
-    try:
-        await bot_instance.send_chat_action(msg.chat.id, "typing")
-    except Exception:
-        pass
+async def _recognize_text_food(msg, text: str):
     try:
         calc = await calculate_meal(text=text)
     except Exception as e:
         logger.error(f"nutrition: calc text failed: {e}")
         err_str = str(e)
         if "quota" in err_str.lower() or "429" in err_str or "403" in err_str:
-            await msg.answer("⚠️ Лимит Gemini API исчерпан. Попробуй позже или добавь второй ключ GEMINI_API_KEY_2.")
+            await msg.answer(text="⚠️ Лимит Gemini API исчерпан. Попробуй позже или добавь второй ключ GEMINI_API_KEY_2.")
         else:
-            await msg.answer(f"Не получилось распознать. Попробуй переформулировать или прислать фото.\n<i>{err_str[:120]}</i>")
+            await msg.answer(text=f"Не получилось распознать. Попробуй переформулировать или прислать фото.\n<i>{err_str[:120]}</i>")
         return
     await _process_calc_and_reply(msg, calc, source="text", raw_input=text)
 
 
-async def _apply_correction(msg: Message, meal_id: int):
-    uid = msg.from_user.id
-    correction = (msg.text or "").strip()
+async def _apply_correction(msg, meal_id: int):
+    uid = msg.sender.user_id
+    correction = (msg.body.text or "").strip()
     if not correction:
-        await msg.answer("Напиши текст правки или /отмена_еда.")
+        await msg.answer(text="Напиши текст правки или /отмена_еда.")
         return
     meal = await asyncio.to_thread(get_meal, meal_id)
     if not meal or meal["user_id"] != uid or meal["deleted_at"]:
         nutr_states.pop(uid, None)
-        await msg.answer("Запись не найдена.")
+        await msg.answer(text="Запись не найдена.")
         return
 
     try:
@@ -1395,14 +1394,14 @@ async def _apply_correction(msg: Message, meal_id: int):
         new_calc = await correct_meal(prev_calc, correction)
     except Exception as e:
         logger.error(f"nutrition: correct failed: {e}")
-        await msg.answer("Не получилось пересчитать. Попробуй переформулировать.")
+        await msg.answer(text="Не получилось пересчитать. Попробуй переформулировать.")
         return
 
     try:
         await asyncio.to_thread(update_meal_calc, meal_id, new_calc)
     except Exception as e:
         logger.error(f"nutrition: update_meal_calc failed: {e}")
-        await msg.answer("Не смогла записать в таблицу.")
+        await msg.answer(text="Не смогла записать в таблицу.")
         return
 
     settings = await asyncio.to_thread(get_settings, uid)
@@ -1414,50 +1413,26 @@ async def _apply_correction(msg: Message, meal_id: int):
         png = None
     caption = build_meal_caption(new_calc, meal_id)
 
-    # Заменяем медиа в исходном сообщении (там фото-карточка)
-    posted_new = False
-    if png and meal["tg_chat_id"] and meal["tg_msg_id"]:
-        try:
-            from aiogram.types import InputMediaPhoto
-            await bot_instance.edit_message_media(
-                chat_id=meal["tg_chat_id"],
-                message_id=meal["tg_msg_id"],
-                media=InputMediaPhoto(
-                    media=BufferedInputFile(png, filename=f"meal_{meal_id}.png"),
-                    caption=caption or None,
-                    parse_mode="HTML",
-                ),
-                reply_markup=kb_meal_actions(meal_id),
-            )
-        except Exception as e:
-            logger.warning(f"nutrition: edit_message_media failed, posting new: {e}")
-            posted_new = True
+    if png:
+        photo_buf = InputMediaBuffer(buffer=png, filename=f"meal_{meal_id}.png")
+        await msg.answer(text=caption or " ", attachments=[photo_buf])
+        await msg.answer(text="✅ Обновила запись.", attachments=[kb_meal_actions(meal_id)])
     else:
-        posted_new = True
-
-    if posted_new:
-        if png:
-            await msg.answer_photo(
-                BufferedInputFile(png, filename=f"meal_{meal_id}.png"),
-                caption=caption or None, reply_markup=kb_meal_actions(meal_id),
-            )
-    # Подтверждение всегда — иначе юзер не видит реакции (edit карточки
-    # происходит вверху чата, может быть вне зоны видимости).
-    await msg.answer("✅ Обновила запись.")
+        await msg.answer(text="✅ Обновила запись.")
     nutr_states.pop(uid, None)
 
 
-async def _apply_leftover(msg: Message, meal_id: int,
+async def _apply_leftover(msg, meal_id: int,
                           text: str | None = None,
                           photo_bytes: bytes | None = None):
-    uid = msg.from_user.id
+    uid = msg.sender.user_id
     if not text and not photo_bytes:
-        await msg.answer("Сфоткай остатки или напиши, сколько осталось (например: «осталась половина», «треть не доела», «осталось 100г»).\nОтмена — /отмена_еда")
+        await msg.answer(text="Сфоткай остатки или напиши, сколько осталось (например: «осталась половина», «треть не доела», «осталось 100г»).\nОтмена — /отмена_еда")
         return
     meal = await asyncio.to_thread(get_meal, meal_id)
     if not meal or meal["user_id"] != uid or meal["deleted_at"]:
         nutr_states.pop(uid, None)
-        await msg.answer("Запись не найдена.")
+        await msg.answer(text="Запись не найдена.")
         return
 
     try:
@@ -1466,29 +1441,24 @@ async def _apply_leftover(msg: Message, meal_id: int,
         prev_calc = {}
 
     try:
-        await bot_instance.send_chat_action(msg.chat.id, "typing")
-    except Exception:
-        pass
-
-    try:
         new_calc = await recalc_leftover(prev_calc, text=text, photo_bytes=photo_bytes)
     except Exception as e:
         logger.error(f"nutrition: leftover recalc failed: {e}")
-        await msg.answer("Не получилось пересчитать. Попробуй ещё раз или опиши словами.")
+        await msg.answer(text="Не получилось пересчитать. Попробуй ещё раз или опиши словами.")
         return
 
     if isinstance(new_calc, dict) and new_calc.get("error"):
-        await msg.answer(
-            (new_calc.get("notes") or
-             "Не поняла. Скажи: половина / треть / осталось N грамм, или пришли фото остатков.")
-        )
+        await msg.answer(text=(
+            new_calc.get("notes") or
+            "Не поняла. Скажи: половина / треть / осталось N грамм, или пришли фото остатков."
+        ))
         return  # state не сбрасываем — даём шанс уточнить
 
     try:
         await asyncio.to_thread(update_meal_calc, meal_id, new_calc)
     except Exception as e:
         logger.error(f"nutrition: update_meal_calc (leftover) failed: {e}")
-        await msg.answer("Не смогла записать в таблицу.")
+        await msg.answer(text="Не смогла записать в таблицу.")
         return
 
     settings = await asyncio.to_thread(get_settings, uid)
@@ -1500,86 +1470,64 @@ async def _apply_leftover(msg: Message, meal_id: int,
         png = None
     caption = build_meal_caption(new_calc, meal_id)
 
-    posted_new = False
-    if png and meal["tg_chat_id"] and meal["tg_msg_id"]:
-        try:
-            from aiogram.types import InputMediaPhoto
-            await bot_instance.edit_message_media(
-                chat_id=meal["tg_chat_id"],
-                message_id=meal["tg_msg_id"],
-                media=InputMediaPhoto(
-                    media=BufferedInputFile(png, filename=f"meal_{meal_id}.png"),
-                    caption=caption or None,
-                    parse_mode="HTML",
-                ),
-                reply_markup=kb_meal_actions(meal_id),
-            )
-        except Exception as e:
-            logger.warning(f"nutrition: edit_message_media (leftover) failed: {e}")
-            posted_new = True
+    if png:
+        photo_buf = InputMediaBuffer(buffer=png, filename=f"meal_{meal_id}.png")
+        await msg.answer(text=caption or " ", attachments=[photo_buf])
+        await msg.answer(text="✅ Пересчитала с учётом остатков.", attachments=[kb_meal_actions(meal_id)])
     else:
-        posted_new = True
-
-    if posted_new and png:
-        await msg.answer_photo(
-            BufferedInputFile(png, filename=f"meal_{meal_id}.png"),
-            caption=caption or None, reply_markup=kb_meal_actions(meal_id),
-        )
-    # Подтверждение всегда (карточка отредактирована наверху — может
-    # оказаться вне зоны видимости пользователя).
-    await msg.answer("✅ Пересчитала с учётом остатков.")
+        await msg.answer(text="✅ Пересчитала с учётом остатков.")
     nutr_states.pop(uid, None)
 
 
 # ==================== Callbacks ====================
 
-@nutrition_router.callback_query(F.data.startswith("nutr:"))
-async def on_nutr_callback(cb: CallbackQuery):
-    uid = cb.from_user.id
+@nutrition_router.message_callback(F.callback.payload.startswith("nutr:"))
+async def on_nutr_callback(event: MessageCallback):
+    uid = event.callback.user.user_id
     if not is_owner(uid):
-        await cb.answer("Это личный модуль.", show_alert=False)
+        await event.bot.send_callback(event.callback.callback_id)
         return
-    parts = cb.data.split(":")
+    parts = event.callback.payload.split(":")
     if len(parts) < 3:
-        await cb.answer()
+        await event.bot.send_callback(event.callback.callback_id)
         return
     action = parts[1]
     try:
         meal_id = int(parts[2])
     except ValueError:
-        await cb.answer()
+        await event.bot.send_callback(event.callback.callback_id)
         return
 
     meal = await asyncio.to_thread(get_meal, meal_id)
     if not meal or meal["user_id"] != uid:
-        await cb.answer("Запись не найдена.", show_alert=True)
+        await event.bot.send_callback(event.callback.callback_id)
         return
 
     if action == "e":
         nutr_states[uid] = {"step": "wait_correction", "meal_id": meal_id}
-        await cb.answer()
-        await cb.message.answer(
+        await event.message.answer(text=(
             "Что поправить? Например: «не 150 г рыбы, а 200» или «добавь сметану 30 г».\n"
             "Отмена — /отмена_еда"
-        )
+        ))
+        await event.bot.send_callback(event.callback.callback_id)
         return
 
     if action == "l":
         nutr_states[uid] = {"step": "wait_leftover", "meal_id": meal_id}
-        await cb.answer()
-        await cb.message.answer(
+        await event.message.answer(text=(
             "Сфоткай остатки (то, что НЕ съела) или напиши словами:\n"
             "«осталась половина», «треть не доела», «осталось 100 г», «съела чуть-чуть».\n"
             "Отмена — /отмена_еда"
-        )
+        ))
+        await event.bot.send_callback(event.callback.callback_id)
         return
 
     if action == "d":
-        await cb.answer()
         try:
-            await cb.message.edit_reply_markup(reply_markup=kb_confirm_delete(meal_id))
+            await event.message.edit(attachments=[kb_confirm_delete(meal_id)])
         except Exception:
-            await cb.message.answer("Точно удалить?", reply_markup=kb_confirm_delete(meal_id))
+            await event.message.answer(text="Точно удалить?", attachments=[kb_confirm_delete(meal_id)])
+        await event.bot.send_callback(event.callback.callback_id)
         return
 
     if action == "dy":
@@ -1587,49 +1535,40 @@ async def on_nutr_callback(cb: CallbackQuery):
         if ok:
             crossed = f"<s>{_esc(meal['meal_name'])}</s>\n<i>Запись удалена.</i>"
             try:
-                # Photo-сообщение → редактируем caption и убираем кнопки
-                await cb.message.edit_caption(caption=crossed, reply_markup=None)
+                await event.message.edit(text=crossed, attachments=[])
             except Exception:
-                # Текстовое сообщение → edit_text. reply_markup=None всегда,
-                # чтобы не оставить «зомби»-кнопки на удалённой записи.
-                try:
-                    await cb.message.edit_text(crossed, reply_markup=None)
-                except Exception:
-                    # Совсем не получилось — хотя бы убрать клавиатуру отдельно.
-                    try:
-                        await cb.message.edit_reply_markup(reply_markup=None)
-                    except Exception:
-                        pass
-                    await cb.message.answer("Запись удалена.")
-            await cb.answer("Удалено")
-        else:
-            await cb.answer("Не нашла запись.", show_alert=True)
+                await event.message.answer(text="Запись удалена.")
+        await event.bot.send_callback(event.callback.callback_id)
         return
 
     if action == "dn":
         try:
-            await cb.message.edit_reply_markup(reply_markup=kb_meal_actions(meal_id))
+            await event.message.edit(attachments=[kb_meal_actions(meal_id)])
         except Exception:
             pass
-        await cb.answer("Отменено")
+        await event.bot.send_callback(event.callback.callback_id)
         return
 
-    await cb.answer()
+    await event.bot.send_callback(event.callback.callback_id)
 
 
 # ==================== Команды ====================
 
-@nutrition_router.message(Command("отмена_еда"))
-async def cmd_cancel_nutr(msg: Message):
-    if not is_owner(msg.from_user.id):
+@nutrition_router.message_created(F.message.body.text == "/отмена_еда")
+async def cmd_cancel_nutr(event: MessageCreated):
+    msg = event.message
+    if not is_owner(msg.sender.user_id):
         return
-    nutr_states.pop(msg.from_user.id, None)
-    await msg.answer("Ок, отменила.")
+    nutr_states.pop(msg.sender.user_id, None)
+    await msg.answer(text="Ок, отменила.")
 
 
-@nutrition_router.message(Command(commands=["день", "today"]))
-async def cmd_day(msg: Message):
-    uid = msg.from_user.id
+@nutrition_router.message_created(
+    F.message.body.text.in_({"/день", "/today"})
+)
+async def cmd_day(event: MessageCreated):
+    msg = event.message
+    uid = msg.sender.user_id
     if not is_owner(uid):
         return
     today = _today_msk()
@@ -1637,7 +1576,7 @@ async def cmd_day(msg: Message):
     end = start + timedelta(days=1)
     meals = await asyncio.to_thread(list_meals_between, uid, start, end)
     settings = await asyncio.to_thread(get_settings, uid)
-    await msg.answer(format_day_summary(meals, settings, today))
+    await msg.answer(text=format_day_summary(meals, settings, today))
 
 
 def _bucket_by_day(meals: list[dict]) -> list[tuple[date, dict]]:
@@ -1655,8 +1594,8 @@ def _bucket_by_day(meals: list[dict]) -> list[tuple[date, dict]]:
     return sorted(buckets.items())
 
 
-async def _period_response(msg: Message, days: int, label: str):
-    uid = msg.from_user.id
+async def _period_response(msg, days: int, label: str):
+    uid = msg.sender.user_id
     today = _today_msk()
     start_day = today - timedelta(days=days - 1)
     start = datetime.combine(start_day, datetime.min.time(), tzinfo=TZ_OFFSET)
@@ -1671,156 +1610,165 @@ async def _period_response(msg: Message, days: int, label: str):
         float(settings["daily_kcal"]),
         label,
     )
-    photo = BufferedInputFile(chart, filename=f"{label}.png")
-    await msg.answer_photo(photo, caption=text)
+    photo_buf = InputMediaBuffer(buffer=chart, filename=f"{label}.png")
+    await msg.answer(text=text, attachments=[photo_buf])
 
 
-@nutrition_router.message(Command(commands=["неделя", "week"]))
-async def cmd_week(msg: Message):
-    if not is_owner(msg.from_user.id):
+@nutrition_router.message_created(F.message.body.text.in_({"/неделя", "/week"}))
+async def cmd_week(event: MessageCreated):
+    msg = event.message
+    if not is_owner(msg.sender.user_id):
         return
     await _period_response(msg, 7, "За 7 дней")
 
 
-@nutrition_router.message(Command(commands=["месяц", "month"]))
-async def cmd_month(msg: Message):
-    if not is_owner(msg.from_user.id):
+@nutrition_router.message_created(F.message.body.text.in_({"/месяц", "/month"}))
+async def cmd_month(event: MessageCreated):
+    msg = event.message
+    if not is_owner(msg.sender.user_id):
         return
     await _period_response(msg, 30, "За 30 дней")
 
 
-@nutrition_router.message(Command(commands=["цель", "goal"]))
-async def cmd_goal(msg: Message):
-    uid = msg.from_user.id
+@nutrition_router.message_created(F.message.body.text.startswith("/цель"))
+async def cmd_goal(event: MessageCreated):
+    msg = event.message
+    uid = msg.sender.user_id
     if not is_owner(uid):
         return
-    args = (msg.text or "").split(maxsplit=1)
+    text = (msg.body.text or "").strip()
+    if text.startswith("/цель_бжу") or text.startswith("/macros"):
+        return  # handled by cmd_macros
+    args = text.split(maxsplit=1)
     settings = await asyncio.to_thread(get_settings, uid)
     if len(args) < 2:
         nutr_states[uid] = {"step": "wait_goal_kcal"}
-        await msg.answer(
+        await msg.answer(text=(
             f"Текущая цель: {settings['daily_kcal']} ккал/день.\n"
             f"Б {settings['target_p']} / Ж {settings['target_f']} / У {settings['target_c']} г.\n\n"
             f"<b>Пришли число</b> — будет новая дневная цель ккал (например, <code>1500</code>).\n"
-            f"Цели по БЖУ: <code>/цель_бжу 70 50 180</code>\n"
+            f"Цели по БЖУ: /цель_бжу 70 50 180\n"
             f"Отмена — /отмена_еда"
-        )
+        ))
         return
     try:
         kcal = int(args[1].strip())
         if kcal < 500 or kcal > 6000:
             raise ValueError("out of range")
     except Exception:
-        await msg.answer("Не понимаю число. Пример: <code>/цель 1380</code>")
+        await msg.answer(text="Не понимаю число. Пример: /цель 1380")
         return
     await asyncio.to_thread(set_settings, uid, daily_kcal=kcal)
-    await msg.answer(f"Ок, дневная цель: {kcal} ккал.")
+    await msg.answer(text=f"Ок, дневная цель: {kcal} ккал.")
 
 
-@nutrition_router.message(Command(commands=["цель_бжу", "macros"]))
-async def cmd_macros(msg: Message):
-    uid = msg.from_user.id
+@nutrition_router.message_created(F.message.body.text.in_({"/цель_бжу", "/macros"}) | F.message.body.text.startswith("/цель_бжу ") | F.message.body.text.startswith("/macros "))
+async def cmd_macros(event: MessageCreated):
+    msg = event.message
+    uid = msg.sender.user_id
     if not is_owner(uid):
         return
-    parts = (msg.text or "").split()
+    parts = (msg.body.text or "").split()
     if len(parts) < 4:
-        await msg.answer("Формат: <code>/цель_бжу 69 46 172</code>  (Б Ж У в граммах)")
+        await msg.answer(text="Формат: /цель_бжу 69 46 172  (Б Ж У в граммах)")
         return
     try:
         p, f, c = int(parts[1]), int(parts[2]), int(parts[3])
     except Exception:
-        await msg.answer("Не понимаю числа. Пример: <code>/цель_бжу 69 46 172</code>")
+        await msg.answer(text="Не понимаю числа. Пример: /цель_бжу 69 46 172")
         return
     await asyncio.to_thread(set_settings, uid, target_p=p, target_f=f, target_c=c)
-    await msg.answer(f"Ок: Б {p} / Ж {f} / У {c} г.")
+    await msg.answer(text=f"Ок: Б {p} / Ж {f} / У {c} г.")
 
 
-@nutrition_router.message(Command(commands=["вес", "weight"]))
-async def cmd_weight(msg: Message):
-    uid = msg.from_user.id
+@nutrition_router.message_created(F.message.body.text.in_({"/вес", "/weight"}) | F.message.body.text.startswith("/вес ") | F.message.body.text.startswith("/weight "))
+async def cmd_weight(event: MessageCreated):
+    msg = event.message
+    uid = msg.sender.user_id
     if not is_owner(uid):
         return
-    parts = (msg.text or "").split(maxsplit=1)
+    parts = (msg.body.text or "").split(maxsplit=1)
     if len(parts) < 2:
         weights = await asyncio.to_thread(list_weights, uid, _today_msk() - timedelta(days=30))
         nutr_states[uid] = {"step": "wait_weight"}
         if not weights:
-            await msg.answer(
+            await msg.answer(text=(
                 "Записей веса нет.\n\n"
-                "<b>Пришли число</b> — например, <code>60.5</code>.\n"
+                "<b>Пришли число</b> — например, 60.5.\n"
                 "Отмена — /отмена_еда"
-            )
+            ))
             return
         last = weights[-1]
-        await msg.answer(
+        await msg.answer(text=(
             f"Последний вес: <b>{last[1]:.1f}</b> кг ({last[0].isoformat()}).\n\n"
-            f"<b>Пришли число</b> — например, <code>60.5</code> — запишу за сегодня.\n"
+            f"<b>Пришли число</b> — например, 60.5 — запишу за сегодня.\n"
             f"График: /вес_график\nОтмена — /отмена_еда"
-        )
+        ))
         return
     try:
         w = float(parts[1].replace(",", "."))
         if w < 30 or w > 300:
             raise ValueError("out of range")
     except Exception:
-        await msg.answer("Не понимаю. Пример: <code>/вес 60.5</code>")
+        await msg.answer(text="Не понимаю. Пример: /вес 60.5")
         return
     await asyncio.to_thread(log_weight, uid, w)
-    await msg.answer(f"Записала: {w:.1f} кг ({_today_msk().isoformat()}).")
+    await msg.answer(text=f"Записала: {w:.1f} кг ({_today_msk().isoformat()}).")
 
 
-async def show_weight_status(msg: Message):
-    """Для reply-кнопки «⚖️ Вес» — последний вес + ждём ввод нового числа."""
-    uid = msg.from_user.id
+async def show_weight_status(msg):
+    """Для кнопки «⚖️ Вес» — последний вес + ждём ввод нового числа."""
+    uid = msg.sender.user_id
     if not is_owner(uid):
         return
     weights = await asyncio.to_thread(list_weights, uid, _today_msk() - timedelta(days=30))
     nutr_states[uid] = {"step": "wait_weight"}
     if not weights:
-        await msg.answer(
+        await msg.answer(text=(
             "Записей веса нет.\n\n"
-            "<b>Пришли число</b> — например, <code>60.5</code> или <code>60,5</code>.\n"
+            "<b>Пришли число</b> — например, 60.5 или 60,5.\n"
             "Отмена — /отмена_еда"
-        )
+        ))
         return
     last = weights[-1]
     delta_text = ""
     if len(weights) >= 2:
         delta = last[1] - weights[0][1]
         delta_text = f" ({delta:+.1f} кг за период)"
-    await msg.answer(
+    await msg.answer(text=(
         f"Последний вес: <b>{last[1]:.1f}</b> кг ({last[0].isoformat()}){delta_text}\n\n"
-        f"<b>Пришли число</b> — например, <code>60.5</code> — запишу за сегодня.\n"
+        f"<b>Пришли число</b> — например, 60.5 — запишу за сегодня.\n"
         f"График: /вес_график\nОтмена — /отмена_еда"
-    )
+    ))
 
 
-async def show_goal_status(msg: Message):
-    """Для reply-кнопки «🎯 Цель» — текущая цель + ждём ввод нового числа ккал."""
-    uid = msg.from_user.id
+async def show_goal_status(msg):
+    """Для кнопки «🎯 Цель» — текущая цель + ждём ввод нового числа ккал."""
+    uid = msg.sender.user_id
     if not is_owner(uid):
         return
     settings = await asyncio.to_thread(get_settings, uid)
     nutr_states[uid] = {"step": "wait_goal_kcal"}
-    await msg.answer(
+    await msg.answer(text=(
         f"<b>Текущая цель</b>\n"
         f"Калории: {settings['daily_kcal']} ккал/день\n"
         f"Б {settings['target_p']} / Ж {settings['target_f']} / У {settings['target_c']} г\n\n"
-        f"<b>Пришли число</b> — будет новая дневная цель ккал (например, <code>1500</code>).\n"
-        f"Цели по БЖУ: <code>/цель_бжу 70 50 180</code>\n"
+        f"<b>Пришли число</b> — будет новая дневная цель ккал (например, 1500).\n"
+        f"Цели по БЖУ: /цель_бжу 70 50 180\n"
         f"Отмена — /отмена_еда"
-    )
+    ))
 
 
-@nutrition_router.message(Command(commands=["вес_график", "weight_chart"]))
-async def cmd_weight_chart(msg: Message):
-    uid = msg.from_user.id
+@nutrition_router.message_created(F.message.body.text.in_({"/вес_график", "/weight_chart"}))
+async def cmd_weight_chart(event: MessageCreated):
+    msg = event.message
+    uid = msg.sender.user_id
     if not is_owner(uid):
         return
     points = await asyncio.to_thread(list_weights, uid, _today_msk() - timedelta(days=30))
     if not points:
-        await msg.answer("Записей веса нет. Пример: <code>/вес 60.5</code>")
+        await msg.answer(text="Записей веса нет. Пример: /вес 60.5")
         return
     png = await asyncio.to_thread(render_weight_chart_png, points)
-    await msg.answer_photo(BufferedInputFile(png, filename="weight.png"),
-                            caption="Вес за 30 дней")
+    photo_buf = InputMediaBuffer(buffer=png, filename="weight.png")
+    await msg.answer(text="Вес за 30 дней", attachments=[photo_buf])

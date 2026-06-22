@@ -8,7 +8,7 @@ import email.utils
 from email.header import decode_header
 from typing import Iterable
 
-from aiogram.types import BufferedInputFile
+from maxapi.types.input_media import InputMediaBuffer
 
 logger = logging.getLogger(__name__)
 
@@ -189,13 +189,14 @@ async def _send_to_telegram(bot, chat_ids: list[int], item: dict):
     body = f"{header}\n\n{_html_escape(text)}" if text.strip() else header
     for chat_id in chat_ids:
         try:
-            await bot.send_message(chat_id, body)
+            await bot.send_message(user_id=chat_id, text=body)
         except Exception as e:
             logger.error(f"send_message {chat_id}: {e}")
             continue
         for fname, data in item["attachments"]:
             try:
-                await bot.send_document(chat_id, BufferedInputFile(data, filename=fname))
+                buf = InputMediaBuffer(buffer=data, filename=fname)
+                await bot.send_message(user_id=chat_id, attachments=[buf])
             except Exception as e:
                 logger.error(f"send_document {fname} -> {chat_id}: {e}")
 

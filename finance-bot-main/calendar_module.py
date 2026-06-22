@@ -4,9 +4,19 @@
 """
 import json, logging, re, asyncio, hashlib
 from datetime import datetime, timedelta, timezone
-from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from maxapi import Router, F
+from maxapi.types import MessageCallback, CallbackButton, LinkButton
+from maxapi.types.attachments import AttachmentButton, ButtonsPayload
+from maxapi.enums import AttachmentType
 import anthropic
+
+
+def _make_kb(rows: list[list]) -> AttachmentButton:
+    """Собирает AttachmentButton из рядов CallbackButton / LinkButton."""
+    return AttachmentButton(
+        type=AttachmentType.INLINE_KEYBOARD,
+        payload=ButtonsPayload(buttons=rows)
+    )
 
 # Карта короткий_токен → полный_event_id. Google Calendar ID для повторяющихся
 # событий бывает 50+ символов, и с префиксом «cal_done_» вылезает за лимит
@@ -179,22 +189,20 @@ def suggest_free_slots(d, requested_time, dur=60, count=3):
     return candidates[:count]
 
 
-def _build_conflict_kb(suggestions: list, with_force: bool = True):
+def _build_conflict_kb(suggestions: list, with_force: bool = True) -> AttachmentButton:
     """Строит клавиатуру с альтернативными временами + Создать/Отмена."""
     rows = []
     if suggestions:
-        # До 3 кнопок в одном ряду
         rows.append([
-            InlineKeyboardButton(text=f"⏰ {s.strftime('%H:%M')}",
-                                 callback_data=f"cal_alt_{s.strftime('%H%M')}")
+            CallbackButton(text=f"⏰ {s.strftime('%H:%M')}", payload=f"cal_alt_{s.strftime('%H%M')}")
             for s in suggestions[:3]
         ])
     bottom = []
     if with_force:
-        bottom.append(InlineKeyboardButton(text="✅ Всё равно создать", callback_data="cal_force"))
-    bottom.append(InlineKeyboardButton(text="❌ Отмена", callback_data="cal_cancel"))
+        bottom.append(CallbackButton(text="✅ Всё равно создать", payload="cal_force"))
+    bottom.append(CallbackButton(text="❌ Отмена", payload="cal_cancel"))
     rows.append(bottom)
-    return InlineKeyboardMarkup(inline_keyboard=rows)
+    return _make_kb(rows)
 
 def create_event(data):
     cal_map={"work":CALENDAR_WORK,"family":CALENDAR_FAMILY,"personal":CALENDAR_PERSONAL}
@@ -234,8 +242,8 @@ async def schedule_reminder(uid,ev_data,mins):
         title=ev_data.get("summary",""); ts=evt.strftime("%H:%M")
         async def _send():
             await asyncio.sleep(delay)
-            kb=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Выполнено",callback_data=f"cal_done_{_short_eid(ev_data.get('id',''))}")]])
-            await bot_instance.send_message(uid,f"<b>Напоминание</b>\n\n{title}\nЧерез {mins} мин — в {ts}",reply_markup=kb,parse_mode="HTML")
+            kb=_make_kb([[CallbackButton(text="Выполнено",payload=f"cal_done_{_short_eid(ev_data.get('id',''))}")]])
+            await bot_instance.send_message(user_id=uid,text=f"<b>Напоминание</b>\n\n{title}\nЧерез {mins} мин — в {ts}",attachments=[kb])
         tk=f"{uid}_{ev_data.get('id','')}"
         if tk in reminder_tasks: reminder_tasks[tk].cancel()
         reminder_tasks[tk]=asyncio.create_task(_send())
@@ -256,25 +264,25 @@ def _build_checklist_view(date, label, evs):
     date_str=date.strftime("%Y-%m-%d")
     for i, ev in enumerate(evs, 1):
         if "[done]" in (ev.get("description","") or "").lower(): continue
-        cur.append(InlineKeyboardButton(text=f"✓ {i}", callback_data=f"cchk_{date_str}_{i}"))
+        cur.append(CallbackButton(text=f"✓ {i}", payload=f"cchk_{date_str}_{i}"))
         if len(cur)==5: rows.append(cur); cur=[]
     if cur: rows.append(cur)
-    rows.append([InlineKeyboardButton(text="+ Добавить",callback_data="cal_add"),
-                 InlineKeyboardButton(text="В начало",callback_data="reset")])
-    return text, InlineKeyboardMarkup(inline_keyboard=rows)
+    rows.append([CallbackButton(text="+ Добавить", payload="cal_add"),
+                 CallbackButton(text="В начало", payload="reset")])
+    return text, _make_kb(rows)
 
 async def show_checklist(msg,date,label):
     evs=get_events(date,1)
     if not evs: await msg.answer(f"<b>{label}</b> ({fmt_date(date)}) — нет событий, день свободен."); return
     text, kb = _build_checklist_view(date, label, evs)
-    await msg.answer(text, reply_markup=kb)
+    await msg.answer(text, attachments=[kb])
 
-@cal_router.callback_query(F.data.startswith("cchk_"))
-async def cb_checklist_done(cb):
-    payload=cb.data[len("cchk_"):]
-    date_str, _, idx_str = payload.partition("_")
+@cal_router.message_callback(F.callback.payload.startswith("cchk_"))
+async def cb_checklist_done(event: MessageCallback):
+    pl=event.callback.payload[len("cchk_"):]
+    date_str, _, idx_str = pl.partition("_")
     try: idx=int(idx_str)-1
-    except ValueError: await cb.answer(); return
+    except ValueError: await event.bot.send_callback(event.callback.callback_id); return
     try: d=datetime.strptime(date_str,"%Y-%m-%d").date()
     except: d=now_msk().date()
     evs=get_events(d,1)
@@ -289,17 +297,16 @@ async def cb_checklist_done(cb):
                 cal_service.events().update(calendarId=cid,eventId=eid,body=full).execute()
         except Exception as e:
             logger.error(f"Mark done: {e}")
-    # Перерисовываем
     label="Сегодня" if d==now_msk().date() else ("Завтра" if d==now_msk().date()+timedelta(days=1) else fmt_date(d))
     evs=get_events(d,1)
     if not evs:
-        try: await cb.message.edit_text(f"<b>{label}</b> ({fmt_date(d)}) — нет событий.")
+        try: await event.message.edit(text=f"<b>{label}</b> ({fmt_date(d)}) — нет событий.")
         except: pass
-        await cb.answer("Отмечено!"); return
+        await event.bot.send_callback(event.callback.callback_id, notification="Отмечено!"); return
     text, kb = _build_checklist_view(d, label, evs)
-    try: await cb.message.edit_text(text, reply_markup=kb)
+    try: await event.message.edit(text=text, attachments=[kb])
     except Exception as e: logger.warning(f"Checklist refresh: {e}")
-    await cb.answer("Отмечено!")
+    await event.bot.send_callback(event.callback.callback_id, notification="Отмечено!")
 
 async def show_week(msg, start=None, days=7, label=None):
     """Показать события на N дней начиная со start (или сегодня)."""
@@ -321,35 +328,34 @@ async def show_week(msg, start=None, days=7, label=None):
             text+=f" ({len(evs)}):"
             for ev in evs[:4]: text+="\n"+fmt_event(ev)
             if len(evs)>4: text+=f"\n   ...ещё {len(evs)-4}"
-        day_btns.append(InlineKeyboardButton(
+        day_btns.append(CallbackButton(
             text=f"{wd[d.weekday()]} {d.strftime('%d.%m')}" + (f" ({len(evs)})" if evs else ""),
-            callback_data=f"cday_{d.strftime('%Y-%m-%d')}"
+            payload=f"cday_{d.strftime('%Y-%m-%d')}"
         ))
     if tot>25: text+=f"\n\n<b>Период перегружен — {tot} событий!</b>"
-    text+="\n\n<i>Тапни день — увидишь его чеклист с галочками.</i>"
-    # Кнопки: до 4 в ряд, потом по 4, потом действия
+    text+="\n\n<i>Нажми на день — увидишь его чеклист.</i>"
     rows = []
     for i in range(0, len(day_btns), 4):
         rows.append(day_btns[i:i+4])
-    rows.append([InlineKeyboardButton(text="+ Добавить",callback_data="cal_add"),
-                 InlineKeyboardButton(text="В начало",callback_data="reset")])
-    kb=InlineKeyboardMarkup(inline_keyboard=rows)
+    rows.append([CallbackButton(text="+ Добавить", payload="cal_add"),
+                 CallbackButton(text="В начало", payload="reset")])
+    kb=_make_kb(rows)
     if len(text)>4000:
         for p in [text[i:i+4000] for i in range(0,len(text),4000)][:-1]: await msg.answer(p)
-        await msg.answer([text[i:i+4000] for i in range(0,len(text),4000)][-1],reply_markup=kb)
-    else: await msg.answer(text,reply_markup=kb)
+        await msg.answer([text[i:i+4000] for i in range(0,len(text),4000)][-1], attachments=[kb])
+    else: await msg.answer(text, attachments=[kb])
 
-@cal_router.callback_query(F.data.startswith("cday_"))
-async def cb_open_day(cb):
-    date_str=cb.data[len("cday_"):]
+@cal_router.message_callback(F.callback.payload.startswith("cday_"))
+async def cb_open_day(event: MessageCallback):
+    date_str=event.callback.payload[len("cday_"):]
     try: d=datetime.strptime(date_str,"%Y-%m-%d").date()
     except: d=now_msk().date()
     label="Сегодня" if d==now_msk().date() else ("Завтра" if d==now_msk().date()+timedelta(days=1) else fmt_date(d))
-    await show_checklist(cb.message, d, label)
-    await cb.answer()
+    await show_checklist(event.message, d, label)
+    await event.bot.send_callback(event.callback.callback_id)
 
 async def handle_calendar_text(msg):
-    uid=msg.from_user.id; text=msg.text.strip(); t=text.lower()
+    uid=msg.sender.user_id; text=(msg.body.text or "").strip(); t=text.lower()
     if any(w in t for w in ["что сегодня","план на сегодня","мои дела"]): await show_checklist(msg,now_msk().date(),"Сегодня"); return True
     if any(w in t for w in ["что завтра","план на завтра"]): await show_checklist(msg,now_msk().date()+timedelta(days=1),"Завтра"); return True
     if any(w in t for w in ["что на неделю","план на неделю"]): await show_week(msg); return True
@@ -400,7 +406,7 @@ async def handle_calendar_text(msg):
                 tt=f" в {t}" if it.get("time") else " — весь день"
                 lines.append(f"• {it.get('date','')}{tt}: {it.get('title','')}")
             if failed: lines.append(f"\nНе создано: {', '.join(failed)}")
-            try: await w.edit_text("\n".join(lines))
+            try: await w.message.edit(text="\n".join(lines))
             except: await msg.answer("\n".join(lines))
             return True
 
@@ -414,7 +420,7 @@ async def handle_calendar_text(msg):
                 d=now_msk().date()
             try: days=max(1, int(days))
             except Exception: days=1
-            try: await w.delete()
+            try: await w.message.delete()
             except: pass
             if days>1:
                 # Заголовок диапазона: «Неделя» если 7 дней и старт=сегодня;
@@ -435,7 +441,7 @@ async def handle_calendar_text(msg):
         if action=="create":
             if not data.get("time"):
                 cal_states[uid]={"step":"cal_ask_time","event_data":data}
-                await w.edit_text(f"<b>{data.get('title','')}</b>\nДата: {data.get('date','')}\n\nВо сколько? (например 14:00 / весь день)")
+                await w.message.edit(text=f"<b>{data.get('title','')}</b>\nДата: {data.get('date','')}\n\nВо сколько? (например 14:00 / весь день)")
                 return True
             conflicts=check_conflicts(data.get("date"),data.get("time"),data.get("duration_minutes"))
             if conflicts:
@@ -446,12 +452,14 @@ async def handle_calendar_text(msg):
                 if slots:
                     slots_text="\n\n<i>Можно сдвинуть на свободный слот:</i>"
                 kb=_build_conflict_kb(slots, with_force=True)
-                await w.edit_text(
-                    f"<b>⚠️ Конфликт</b>\nЗапрошено: {data.get('time','')} «{data.get('title','')}»\n\n"
-                    f"Уже занято:\n{ct}\n\n"
-                    f"<i>Может делегируешь то, что мешает? Открой день в /день и поправь существующее.</i>"
-                    f"{slots_text}",
-                    reply_markup=kb,
+                await w.message.edit(
+                    text=(
+                        f"<b>⚠️ Конфликт</b>\nЗапрошено: {data.get('time','')} «{data.get('title','')}»\n\n"
+                        f"Уже занято:\n{ct}\n\n"
+                        f"<i>Может делегируешь то, что мешает? Открой день в /день и поправь существующее.</i>"
+                        f"{slots_text}"
+                    ),
+                    attachments=[kb],
                 ); return True
             result=create_event(data); last_event[uid]=result
             await schedule_reminder(uid,result,data.get("reminder_minutes",15))
@@ -471,7 +479,7 @@ async def handle_calendar_text(msg):
                 short_desc = desc[:150]
                 confirm_text += f"\n{short_desc}"
             try:
-                await w.edit_text(confirm_text)
+                await w.message.edit(text=confirm_text)
             except:
                 await msg.answer(confirm_text)
             return True
@@ -480,7 +488,7 @@ async def handle_calendar_text(msg):
             target=last_event.get(uid) if data.get("refers_to_last") else None
             if not target and data.get("search_text"): target=find_event(data["search_text"])
             if not target and uid in last_event: target=last_event[uid]
-            if not target: await w.edit_text("Не нашёл событие. Уточни название."); return True
+            if not target: await w.message.edit(text="Не нашёл событие. Уточни название."); return True
             cid=target.get("_cid",CALENDAR_PERSONAL); eid=target["id"]
             field=data.get("edit_field",""); val=data.get("edit_value","")
             if field=="reminder" and val:
@@ -488,118 +496,134 @@ async def handle_calendar_text(msg):
                 target["reminders"]={"useDefault":False,"overrides":[{"method":"popup","minutes":mins}]}
                 cal_service.events().update(calendarId=cid,eventId=eid,body=target).execute()
                 await schedule_reminder(uid,target,mins)
-                await w.edit_text(f"Напоминание «{target.get('summary','')}» — за {mins} мин")
+                await w.message.edit(text=f"Напоминание «{target.get('summary','')}» — за {mins} мин")
             elif field=="time" and val:
                 d=target["start"].get("dateTime","")[:10]; target["start"]["dateTime"]=f"{d}T{val}:00+03:00"
                 end=datetime.strptime(f"{d} {val}","%Y-%m-%d %H:%M")+timedelta(minutes=60)
                 target["end"]={"dateTime":end.strftime("%Y-%m-%dT%H:%M:00+03:00"),"timeZone":TIMEZONE}
                 cal_service.events().update(calendarId=cid,eventId=eid,body=target).execute()
-                await w.edit_text(f"Время «{target.get('summary','')}» → {val}")
-            else: await w.edit_text("Не понял что изменить.")
+                await w.message.edit(text=f"Время «{target.get('summary','')}» → {val}")
+            else: await w.message.edit(text="Не понял что изменить.")
             return True
 
         if action=="move":
             target=last_event.get(uid) if data.get("refers_to_last") else None
             if not target and data.get("search_text"): target=find_event(data["search_text"])
-            if not target: await w.edit_text("Не нашёл событие."); return True
+            if not target: await w.message.edit(text="Не нашёл событие."); return True
             nd=data.get("move_date") or data.get("date"); nt=data.get("move_time") or data.get("time")
             if nd and nt:
                 target["start"]={"dateTime":f"{nd}T{nt}:00+03:00","timeZone":TIMEZONE}
                 end=datetime.strptime(f"{nd} {nt}","%Y-%m-%d %H:%M")+timedelta(minutes=60)
                 target["end"]={"dateTime":end.strftime("%Y-%m-%dT%H:%M:00+03:00"),"timeZone":TIMEZONE}
                 cal_service.events().update(calendarId=target.get("_cid",CALENDAR_PERSONAL),eventId=target["id"],body=target).execute()
-                await w.edit_text(f"«{target.get('summary','')}» → {nd} {nt}")
-            else: await w.edit_text("Укажи дату и время.")
+                await w.message.edit(text=f"«{target.get('summary','')}» → {nd} {nt}")
+            else: await w.message.edit(text="Укажи дату и время.")
             return True
 
         if action=="delete":
             target=last_event.get(uid) if data.get("refers_to_last") else None
             if not target and data.get("search_text"): target=find_event(data["search_text"])
-            if not target: await w.edit_text("Не нашёл событие."); return True
+            if not target: await w.message.edit(text="Не нашёл событие."); return True
             cal_service.events().delete(calendarId=target.get("_cid",CALENDAR_PERSONAL),eventId=target["id"]).execute()
-            last_event.pop(uid,None); await w.edit_text(f"«{target.get('summary','')}» удалено."); return True
+            last_event.pop(uid,None); await w.message.edit(text=f"«{target.get('summary','')}» удалено."); return True
 
         if action=="done":
             target=find_event(data.get("search_text","")) if data.get("search_text") else last_event.get(uid)
-            if not target: await w.edit_text("Не нашёл задачу."); return True
+            if not target: await w.message.edit(text="Не нашёл задачу."); return True
             cid=target.get("_cid",CALENDAR_PERSONAL); desc=target.get("description","") or ""
             if "[done]" not in desc.lower():
                 target["description"]=desc+"\n[DONE]"; target["summary"]="✓ "+target.get("summary","")
                 cal_service.events().update(calendarId=cid,eventId=target["id"],body=target).execute()
-            await w.edit_text(f"✓ «{target.get('summary','')}» выполнено!"); return True
+            await w.message.edit(text=f"✓ «{target.get('summary','')}» выполнено!"); return True
 
-        await w.edit_text("Не понял. Попробуй: добавь, перенеси, удали, что завтра..."); return True
+        await w.message.edit(text="Не понял. Попробуй: добавь, перенеси, удали, что завтра..."); return True
     except json.JSONDecodeError:
-        try: await w.edit_text("Не разобрал. Попробуй иначе.")
+        try: await w.message.edit(text="Не разобрал. Попробуй иначе.")
         except: await msg.answer("Не разобрал. Попробуй иначе.")
         return True
     except Exception as e:
         logger.error(f"Cal: {e}")
         err = str(e)[:100].replace("<","&lt;").replace(">","&gt;")
-        try: await w.edit_text(f"Ошибка: {err}")
+        try: await w.message.edit(text=f"Ошибка: {err}")
         except: await msg.answer(f"Ошибка: {err}")
         return True
 
-@cal_router.callback_query(F.data=="cal_today")
-async def cb_today(cb): await show_checklist(cb.message,now_msk().date(),"Сегодня"); await cb.answer()
-@cal_router.callback_query(F.data=="cal_tomorrow")
-async def cb_tmrw(cb): await show_checklist(cb.message,now_msk().date()+timedelta(days=1),"Завтра"); await cb.answer()
-@cal_router.callback_query(F.data=="cal_week")
-async def cb_week(cb): await show_week(cb.message); await cb.answer()
-@cal_router.callback_query(F.data=="cal_add")
-async def cb_add(cb):
-    cal_states[cb.from_user.id]={"step":"calendar_input"}
-    await cb.message.answer("Напиши что добавить:\n• Встреча завтра в 14:00\n• Рейс SU1234 15 апреля 8:30\n• Позвонить Кристине послезавтра"); await cb.answer()
-@cal_router.callback_query(F.data=="cal_force")
-async def cb_force(cb):
-    uid=cb.from_user.id; data=cal_states.get(uid,{}).get("event_data")
-    if not data: return await cb.answer("Нет.")
+@cal_router.message_callback(F.callback.payload=="cal_today")
+async def cb_today(event: MessageCallback):
+    await show_checklist(event.message, now_msk().date(), "Сегодня")
+    await event.bot.send_callback(event.callback.callback_id)
+
+@cal_router.message_callback(F.callback.payload=="cal_tomorrow")
+async def cb_tmrw(event: MessageCallback):
+    await show_checklist(event.message, now_msk().date()+timedelta(days=1), "Завтра")
+    await event.bot.send_callback(event.callback.callback_id)
+
+@cal_router.message_callback(F.callback.payload=="cal_week")
+async def cb_week(event: MessageCallback):
+    await show_week(event.message)
+    await event.bot.send_callback(event.callback.callback_id)
+
+@cal_router.message_callback(F.callback.payload=="cal_add")
+async def cb_add(event: MessageCallback):
+    cal_states[event.callback.user.user_id]={"step":"calendar_input"}
+    await event.message.answer("Напиши что добавить:\n• Встреча завтра в 14:00\n• Рейс SU1234 15 апреля 8:30\n• Позвонить Кристине послезавтра")
+    await event.bot.send_callback(event.callback.callback_id)
+
+@cal_router.message_callback(F.callback.payload=="cal_force")
+async def cb_force(event: MessageCallback):
+    uid=event.callback.user.user_id; data=cal_states.get(uid,{}).get("event_data")
+    if not data:
+        await event.bot.send_callback(event.callback.callback_id)
+        return
     result=create_event(data); last_event[uid]=result; cal_states.pop(uid,None)
     await schedule_reminder(uid,result,data.get("reminder_minutes",15))
-    await cb.message.edit_text(f"«{data.get('title','')}» создано."); await cb.answer()
+    await event.message.edit(text=f"«{data.get('title','')}» создано.")
+    await event.bot.send_callback(event.callback.callback_id)
 
-@cal_router.callback_query(F.data.startswith("cal_alt_"))
-async def cb_apply_alt_time(cb):
-    """Пользователь нажал кнопку с альтернативным временем при конфликте."""
-    uid = cb.from_user.id
+@cal_router.message_callback(F.callback.payload.startswith("cal_alt_"))
+async def cb_apply_alt_time(event: MessageCallback):
+    uid = event.callback.user.user_id
     data = cal_states.get(uid, {}).get("event_data")
     if not data:
-        await cb.answer("Данные события устарели. Создай заново.", show_alert=True)
+        await event.bot.send_callback(event.callback.callback_id)
         return
-    raw = cb.data[len("cal_alt_"):]
-    # Ожидаем 4 цифры HHMM
+    raw = event.callback.payload[len("cal_alt_"):]
     if len(raw) != 4 or not raw.isdigit():
-        await cb.answer(); return
+        await event.bot.send_callback(event.callback.callback_id)
+        return
     new_time = f"{raw[:2]}:{raw[2:]}"
     try:
         datetime.strptime(new_time, "%H:%M")
     except ValueError:
-        await cb.answer(); return
+        await event.bot.send_callback(event.callback.callback_id)
+        return
 
     data["time"] = new_time
-    # Сбросим end_time, чтобы пересчитался по duration_minutes от нового начала
     data["end_time"] = None
     try:
         result = create_event(data); last_event[uid] = result
         await schedule_reminder(uid, result, data.get("reminder_minutes", 15))
         cal_states.pop(uid, None)
-        await cb.message.edit_text(
-            f"✅ <b>{data.get('title','')}</b>\n"
-            f"{data.get('date','')} в {new_time}\n"
-            f"<i>Перенесла на свободный слот.</i>"
+        await event.message.edit(
+            text=(
+                f"✅ <b>{data.get('title','')}</b>\n"
+                f"{data.get('date','')} в {new_time}\n"
+                f"<i>Перенесла на свободный слот.</i>"
+            )
         )
-        await cb.answer("Создано!")
     except Exception as e:
         logger.error(f"Cal alt time create: {e}")
-        await cb.answer("Не получилось создать.", show_alert=True)
+    await event.bot.send_callback(event.callback.callback_id)
 
-@cal_router.callback_query(F.data=="cal_cancel")
-async def cb_cancel(cb): cal_states.pop(cb.from_user.id,None); await cb.message.edit_text("Отменено."); await cb.answer()
-@cal_router.callback_query(F.data.startswith("cal_done_"))
-async def cb_done(cb):
-    token=cb.data[9:]
-    # Сначала пытаемся резолвнуть короткий токен; если в карте нет (рестарт
-    # процесса или старая кнопка с полным id) — используем как есть.
+@cal_router.message_callback(F.callback.payload=="cal_cancel")
+async def cb_cancel(event: MessageCallback):
+    cal_states.pop(event.callback.user.user_id, None)
+    await event.message.edit(text="Отменено.")
+    await event.bot.send_callback(event.callback.callback_id)
+
+@cal_router.message_callback(F.callback.payload.startswith("cal_done_"))
+async def cb_done(event: MessageCallback):
+    token=event.callback.payload[9:]
     eid=_eid_map.get(token, token)
     for cid in [CALENDAR_WORK,CALENDAR_FAMILY,CALENDAR_PERSONAL]:
         if not cid: continue
@@ -608,18 +632,20 @@ async def cb_done(cb):
             d=ev.get("description","") or ""
             if "[done]" not in d.lower(): ev["description"]=d+"\n[DONE]"; ev["summary"]="✓ "+ev.get("summary","")
             cal_service.events().update(calendarId=cid,eventId=eid,body=ev).execute()
-            await cb.message.edit_text(f"✓ {ev.get('summary','')} выполнено!"); await cb.answer(); return
+            await event.message.edit(text=f"✓ {ev.get('summary','')} выполнено!")
+            await event.bot.send_callback(event.callback.callback_id)
+            return
         except: continue
 
 async def handle_cal_time_input(msg):
-    uid=msg.from_user.id; data=cal_states.get(uid,{}).get("event_data")
+    uid=msg.sender.user_id; data=cal_states.get(uid,{}).get("event_data")
     if not data: return False
-    t=msg.text.strip().lower()
+    t=(msg.body.text or "").strip().lower()
     if "весь день" in t or t in ("весь","всд","вд"):
         data["time"]=None; result=create_event(data); last_event[uid]=result; cal_states.pop(uid,None)
         await schedule_reminder(uid,result,data.get("reminder_minutes",15))
         cn={"work":"Рабочий","family":"Семейный","personal":"Личный"}.get(data.get("calendar","personal"),"Личный")
-        await msg.answer(
+        await msg.answer(text=
             f"✅ <b>{data.get('title','')}</b>\n\n"
             f"{data.get('date','')} — весь день\n"
             f"{cn}"
@@ -633,7 +659,7 @@ async def handle_cal_time_input(msg):
         else:
             m3=re.search(r'(\d{1,2})\s*(час|ч\b)',t)
             if m3: data["time"]=f"{int(m3.group(1)):02d}:00"
-            else: await msg.answer("Не понял. Напиши время: 14:00 или «весь день»"); return True
+            else: await msg.answer(text="Не понял. Напиши время: 14:00 или «весь день»"); return True
     else: data["time"]=f"{int(m.group(1)):02d}:{m.group(2)}"
     # Парсинг времени окончания если есть диапазон "10:00-13:00"
     m_end=re.search(r'[-–]\s*(\d{1,2})[:\.](\d{2})',t)
@@ -645,11 +671,13 @@ async def handle_cal_time_input(msg):
         slots_text="\n\n<i>Можно сдвинуть на свободный слот:</i>" if slots else ""
         kb=_build_conflict_kb(slots, with_force=True)
         await msg.answer(
-            f"<b>⚠️ Конфликт</b>\nЗапрошено: {data['time']} «{data.get('title','')}»\n\n"
-            f"Уже занято:\n"+"\n".join([f"  ! {fmt_event(c)}" for c in conflicts])+
-            "\n\n<i>Может делегируешь то, что мешает? Открой день в /день и поправь существующее.</i>"+
-            slots_text,
-            reply_markup=kb,
+            text=(
+                f"<b>⚠️ Конфликт</b>\nЗапрошено: {data['time']} «{data.get('title','')}»\n\n"
+                f"Уже занято:\n"+"\n".join([f"  ! {fmt_event(c)}" for c in conflicts])+
+                "\n\n<i>Может делегируешь то, что мешает? Открой день в /день и поправь существующее.</i>"+
+                slots_text
+            ),
+            attachments=[kb],
         ); return True
     result=create_event(data); last_event[uid]=result; cal_states.pop(uid,None)
     await schedule_reminder(uid,result,data.get("reminder_minutes",15))
@@ -657,11 +685,12 @@ async def handle_cal_time_input(msg):
     end_str=f"–{data['end_time']}" if data.get("end_time") else ""
     rm=data.get("reminder_minutes",15)
     await msg.answer(
-        f"✅ <b>{data.get('title','')}</b>\n\n"
-        f"{data.get('date','')} в {data['time']}{end_str}\n"
-        f"{cn}\n"
-        f"Напоминание за {rm} мин",
-        parse_mode="HTML"
+        text=(
+            f"✅ <b>{data.get('title','')}</b>\n\n"
+            f"{data.get('date','')} в {data['time']}{end_str}\n"
+            f"{cn}\n"
+            f"Напоминание за {rm} мин"
+        )
     ); return True
 
 def is_calendar_intent(text):
@@ -703,12 +732,10 @@ async def check_upcoming_reminders():
                                 text += f"\n{clean}"
                             if urls:
                                 text += "\n" + "\n".join(urls)
-                        kb = InlineKeyboardMarkup(inline_keyboard=[
-                            [InlineKeyboardButton(text="Выполнено", callback_data=f"cal_done_{_short_eid(eid)}")]
-                        ])
+                        kb = _make_kb([[CallbackButton(text="Выполнено", payload=f"cal_done_{_short_eid(eid)}")]])
                         for uid in ALLOWED_USERS:
                             try:
-                                await bot_instance.send_message(uid, text, reply_markup=kb, parse_mode="HTML")
+                                await bot_instance.send_message(user_id=uid, text=text, attachments=[kb])
                             except Exception as e:
                                 logger.error(f"Reminder send: {e}")
                 # Напоминание за 5 минут
@@ -720,7 +747,7 @@ async def check_upcoming_reminders():
                         ts = ev_time.strftime("%H:%M")
                         for uid in ALLOWED_USERS:
                             try:
-                                await bot_instance.send_message(uid, f"⚡ <b>{title}</b> — через {int(diff)} мин! В {ts}", parse_mode="HTML")
+                                await bot_instance.send_message(user_id=uid, text=f"⚡ <b>{title}</b> — через {int(diff)} мин! В {ts}")
                             except: pass
             # Чистим старые записи (больше 1000)
             if len(_sent_reminders) > 1000:
@@ -756,7 +783,7 @@ async def _send_daily_digest_to_all(today):
     text = base_text + (("\n\n" + extras) if extras else "")
     for uid in ALLOWED_USERS:
         try:
-            await bot_instance.send_message(uid, text, reply_markup=kb, parse_mode="HTML")
+            await bot_instance.send_message(user_id=uid, text=text, attachments=[kb] if kb else [])
         except Exception as e:
             logger.error(f"Daily digest send to {uid}: {e}")
     return True
