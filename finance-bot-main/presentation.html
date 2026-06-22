@@ -1,0 +1,849 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Finance Bot — Telegram-бот для турагентства</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* ===========================================
+           RESET & VIEWPORT FITTING BASE
+           =========================================== */
+        *, *::before, *::after {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html, body {
+            height: 100%;
+            overflow-x: hidden;
+        }
+
+        html {
+            scroll-snap-type: y mandatory;
+            scroll-behavior: smooth;
+        }
+
+        /* ===========================================
+           BOLD SIGNAL THEME
+           =========================================== */
+        :root {
+            --charcoal: #1a1a1a;
+            --charcoal-light: #2a2a2a;
+            --charcoal-mid: #333333;
+            --orange: #ff5e1a;
+            --orange-glow: rgba(255, 94, 26, 0.15);
+            --white: #ffffff;
+            --white-muted: rgba(255, 255, 255, 0.7);
+            --white-dim: rgba(255, 255, 255, 0.4);
+
+            --title-size: clamp(1.5rem, 5vw, 4rem);
+            --h2-size: clamp(1.25rem, 3.5vw, 2.5rem);
+            --h3-size: clamp(1rem, 2.5vw, 1.75rem);
+            --body-size: clamp(0.75rem, 1.5vw, 1.125rem);
+            --small-size: clamp(0.65rem, 1vw, 0.875rem);
+            --slide-padding: clamp(1rem, 4vw, 4rem);
+            --content-gap: clamp(0.5rem, 2vw, 2rem);
+            --element-gap: clamp(0.25rem, 1vw, 1rem);
+
+            --font-display: 'Archivo Black', sans-serif;
+            --font-body: 'Space Grotesk', sans-serif;
+        }
+
+        body {
+            background: var(--charcoal);
+            color: var(--white);
+            font-family: var(--font-body);
+        }
+
+        /* ===========================================
+           SLIDE BASE
+           =========================================== */
+        .slide {
+            width: 100vw;
+            height: 100vh;
+            height: 100dvh;
+            overflow: hidden;
+            scroll-snap-align: start;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+
+        .slide-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            max-height: 100%;
+            overflow: hidden;
+            padding: var(--slide-padding);
+            position: relative;
+            z-index: 2;
+        }
+
+        /* ===========================================
+           SECTION NUMBERS (Bold Signal signature)
+           =========================================== */
+        .section-number {
+            position: absolute;
+            top: clamp(0.5rem, 2vw, 2rem);
+            right: clamp(1rem, 4vw, 4rem);
+            font-family: var(--font-display);
+            font-size: clamp(4rem, 12vw, 12rem);
+            color: rgba(255, 255, 255, 0.04);
+            line-height: 1;
+            z-index: 1;
+            user-select: none;
+        }
+
+        /* ===========================================
+           TYPOGRAPHY
+           =========================================== */
+        .slide-title {
+            font-family: var(--font-display);
+            font-size: var(--title-size);
+            line-height: 1.1;
+            text-transform: uppercase;
+            letter-spacing: -0.02em;
+        }
+
+        .slide-subtitle {
+            font-family: var(--font-body);
+            font-size: var(--h3-size);
+            font-weight: 400;
+            color: var(--white-muted);
+            margin-top: var(--element-gap);
+        }
+
+        h2 {
+            font-family: var(--font-display);
+            font-size: var(--h2-size);
+            text-transform: uppercase;
+            letter-spacing: -0.01em;
+            margin-bottom: var(--content-gap);
+        }
+
+        h3 {
+            font-family: var(--font-body);
+            font-size: var(--h3-size);
+            font-weight: 600;
+        }
+
+        p, li {
+            font-size: var(--body-size);
+            line-height: 1.5;
+            color: var(--white-muted);
+        }
+
+        /* ===========================================
+           ORANGE ACCENT CARD (Bold Signal signature)
+           =========================================== */
+        .accent-card {
+            background: var(--orange);
+            color: var(--white);
+            padding: clamp(1rem, 3vw, 2.5rem);
+            border-radius: clamp(0.5rem, 1vw, 1rem);
+            max-width: min(90vw, 700px);
+        }
+
+        .accent-card p,
+        .accent-card li {
+            color: rgba(255, 255, 255, 0.9);
+        }
+
+        .accent-card h3 {
+            margin-bottom: var(--element-gap);
+        }
+
+        /* ===========================================
+           FEATURE CARDS
+           =========================================== */
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr));
+            gap: clamp(0.5rem, 1.5vw, 1rem);
+            margin-top: var(--content-gap);
+        }
+
+        .feature-card {
+            background: var(--charcoal-light);
+            border: 1px solid var(--charcoal-mid);
+            border-radius: clamp(0.4rem, 0.8vw, 0.75rem);
+            padding: clamp(0.75rem, 2vw, 1.5rem);
+            transition: border-color 0.3s ease, transform 0.3s ease;
+        }
+
+        .feature-card:hover {
+            border-color: var(--orange);
+            transform: translateY(-2px);
+        }
+
+        .feature-card .icon {
+            font-size: clamp(1.25rem, 2.5vw, 2rem);
+            margin-bottom: var(--element-gap);
+        }
+
+        .feature-card h3 {
+            font-size: clamp(0.85rem, 1.8vw, 1.1rem);
+            margin-bottom: calc(var(--element-gap) * 0.5);
+        }
+
+        .feature-card p {
+            font-size: var(--small-size);
+            color: var(--white-dim);
+        }
+
+        /* ===========================================
+           BULLET LIST
+           =========================================== */
+        .bullet-list {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: clamp(0.4rem, 1vh, 1rem);
+        }
+
+        .bullet-list li {
+            padding-left: clamp(1rem, 2vw, 1.5rem);
+            position: relative;
+        }
+
+        .bullet-list li::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: clamp(0.4rem, 0.7vw, 0.55rem);
+            width: clamp(0.35rem, 0.6vw, 0.5rem);
+            height: clamp(0.35rem, 0.6vw, 0.5rem);
+            background: var(--orange);
+            border-radius: 50%;
+        }
+
+        /* ===========================================
+           TWO-COLUMN LAYOUT
+           =========================================== */
+        .two-col {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: clamp(1rem, 3vw, 3rem);
+            align-items: center;
+        }
+
+        @media (max-width: 700px) {
+            .two-col {
+                grid-template-columns: 1fr;
+                gap: var(--content-gap);
+            }
+        }
+
+        /* ===========================================
+           TECH STACK TAGS
+           =========================================== */
+        .tech-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: clamp(0.3rem, 0.8vw, 0.6rem);
+            margin-top: var(--content-gap);
+        }
+
+        .tech-tag {
+            background: var(--charcoal-light);
+            border: 1px solid var(--charcoal-mid);
+            color: var(--white-muted);
+            font-family: var(--font-body);
+            font-size: var(--small-size);
+            font-weight: 500;
+            padding: clamp(0.3rem, 0.6vw, 0.5rem) clamp(0.6rem, 1.2vw, 1rem);
+            border-radius: 100px;
+            transition: all 0.3s ease;
+        }
+
+        .tech-tag.highlight {
+            background: var(--orange);
+            border-color: var(--orange);
+            color: var(--white);
+        }
+
+        /* ===========================================
+           DECORATIVE ELEMENTS
+           =========================================== */
+        .bg-grid {
+            position: absolute;
+            inset: 0;
+            background-image:
+                linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+            background-size: clamp(30px, 5vw, 60px) clamp(30px, 5vw, 60px);
+            z-index: 0;
+        }
+
+        .orange-glow {
+            position: absolute;
+            width: clamp(200px, 40vw, 500px);
+            height: clamp(200px, 40vw, 500px);
+            background: radial-gradient(circle, var(--orange-glow) 0%, transparent 70%);
+            border-radius: 50%;
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        .divider {
+            width: clamp(2rem, 6vw, 5rem);
+            height: 3px;
+            background: var(--orange);
+            margin: var(--element-gap) 0;
+            border-radius: 2px;
+        }
+
+        /* ===========================================
+           PROGRESS BAR
+           =========================================== */
+        .progress-bar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            height: 3px;
+            background: var(--orange);
+            z-index: 1000;
+            transition: width 0.3s ease;
+        }
+
+        /* ===========================================
+           SLIDE COUNTER
+           =========================================== */
+        .slide-counter {
+            position: fixed;
+            bottom: clamp(0.75rem, 2vw, 1.5rem);
+            right: clamp(0.75rem, 2vw, 1.5rem);
+            font-family: var(--font-body);
+            font-size: var(--small-size);
+            color: var(--white-dim);
+            z-index: 1000;
+        }
+
+        .slide-counter .current {
+            color: var(--orange);
+            font-weight: 600;
+        }
+
+        /* ===========================================
+           REVEAL ANIMATIONS
+           =========================================== */
+        .reveal {
+            opacity: 0;
+            transform: translateY(30px);
+            transition: opacity 0.6s ease, transform 0.6s ease;
+        }
+
+        .reveal.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .reveal-delay-1 { transition-delay: 0.1s; }
+        .reveal-delay-2 { transition-delay: 0.2s; }
+        .reveal-delay-3 { transition-delay: 0.3s; }
+        .reveal-delay-4 { transition-delay: 0.4s; }
+
+        /* ===========================================
+           CTA SLIDE
+           =========================================== */
+        .cta-list {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: clamp(0.3rem, 0.8vh, 0.6rem);
+            margin-top: var(--content-gap);
+        }
+
+        .cta-list li {
+            font-size: var(--body-size);
+            color: var(--white-muted);
+            display: flex;
+            align-items: center;
+            gap: clamp(0.4rem, 0.8vw, 0.6rem);
+        }
+
+        .cta-list .check {
+            color: var(--orange);
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+
+        /* ===========================================
+           RESPONSIVE
+           =========================================== */
+        @media (max-height: 700px) {
+            :root {
+                --slide-padding: clamp(0.75rem, 3vw, 2rem);
+                --content-gap: clamp(0.4rem, 1.5vw, 1rem);
+                --title-size: clamp(1.25rem, 4.5vw, 2.5rem);
+                --h2-size: clamp(1rem, 3vw, 1.75rem);
+            }
+        }
+
+        @media (max-height: 600px) {
+            :root {
+                --slide-padding: clamp(0.5rem, 2.5vw, 1.5rem);
+                --content-gap: clamp(0.3rem, 1vw, 0.75rem);
+                --title-size: clamp(1.1rem, 4vw, 2rem);
+                --body-size: clamp(0.7rem, 1.2vw, 0.95rem);
+            }
+            .section-number, .decorative { display: none; }
+        }
+
+        @media (max-height: 500px) {
+            :root {
+                --slide-padding: clamp(0.4rem, 2vw, 1rem);
+                --title-size: clamp(1rem, 3.5vw, 1.5rem);
+                --h2-size: clamp(0.9rem, 2.5vw, 1.25rem);
+                --body-size: clamp(0.65rem, 1vw, 0.85rem);
+            }
+        }
+
+        @media (max-width: 600px) {
+            :root {
+                --title-size: clamp(1.25rem, 7vw, 2.5rem);
+            }
+            .features-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                transition-duration: 0.2s !important;
+            }
+            html {
+                scroll-behavior: auto;
+            }
+            .reveal {
+                opacity: 1;
+                transform: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Progress bar -->
+    <div class="progress-bar" id="progressBar"></div>
+    <!-- Slide counter -->
+    <div class="slide-counter"><span class="current" id="currentSlide">01</span> / <span id="totalSlides">12</span></div>
+
+    <!-- ===== SLIDE 1: TITLE ===== -->
+    <section class="slide" id="slide-1">
+        <div class="bg-grid"></div>
+        <div class="orange-glow" style="bottom: -20%; right: -10%;"></div>
+        <div class="slide-content" style="align-items: center; text-align: center;">
+            <div class="reveal">
+                <div class="divider" style="margin: 0 auto var(--element-gap);"></div>
+                <h1 class="slide-title">Finance Bot</h1>
+                <p class="slide-subtitle">Telegram-бот с AI для управления<br>финансами турагентства</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== SLIDE 2: PROBLEM ===== -->
+    <section class="slide" id="slide-2">
+        <span class="section-number">01</span>
+        <div class="bg-grid"></div>
+        <div class="slide-content">
+            <h2 class="reveal">Проблема</h2>
+            <div class="two-col">
+                <div>
+                    <ul class="bullet-list">
+                        <li class="reveal reveal-delay-1">Ручной ввод данных из чеков и платёжек</li>
+                        <li class="reveal reveal-delay-2">Разрозненные таблицы, календари и заметки</li>
+                        <li class="reveal reveal-delay-3">Нет единой системы учёта клиентов и гидов</li>
+                        <li class="reveal reveal-delay-4">Потеря времени на рутинные операции</li>
+                    </ul>
+                </div>
+                <div class="accent-card reveal reveal-delay-2">
+                    <h3>До 40% рабочего времени</h3>
+                    <p>уходит на ручной ввод и сверку финансовых данных в турагентствах</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== SLIDE 3: SOLUTION ===== -->
+    <section class="slide" id="slide-3">
+        <span class="section-number">02</span>
+        <div class="bg-grid"></div>
+        <div class="orange-glow" style="top: -20%; left: -15%;"></div>
+        <div class="slide-content">
+            <h2 class="reveal">Решение</h2>
+            <div class="divider reveal reveal-delay-1"></div>
+            <p class="reveal reveal-delay-1" style="font-size: var(--h3-size); color: var(--white); max-width: min(90vw, 700px);">
+                Единый Telegram-бот, который объединяет финансовый учёт, календарь, базу гидов и клиентов — с распознаванием документов через Claude AI.
+            </p>
+            <ul class="bullet-list" style="margin-top: var(--content-gap);">
+                <li class="reveal reveal-delay-2">Автоматическое извлечение данных из фото</li>
+                <li class="reveal reveal-delay-3">Синхронизация с Google Sheets и Calendar</li>
+                <li class="reveal reveal-delay-4">Всё управление — прямо из Telegram</li>
+            </ul>
+        </div>
+    </section>
+
+    <!-- ===== SLIDE 4: FINANCIAL MODULE ===== -->
+    <section class="slide" id="slide-4">
+        <span class="section-number">03</span>
+        <div class="bg-grid"></div>
+        <div class="slide-content">
+            <h2 class="reveal">Финансовый модуль</h2>
+            <div class="two-col">
+                <div>
+                    <ul class="bullet-list">
+                        <li class="reveal reveal-delay-1">Фото чека → данные в таблице за секунды</li>
+                        <li class="reveal reveal-delay-2">Распознаёт платёжные поручения и СБП</li>
+                        <li class="reveal reveal-delay-3">Claude AI извлекает суммы, даты, контрагентов</li>
+                        <li class="reveal reveal-delay-4">Категоризация расходов и доходов</li>
+                    </ul>
+                </div>
+                <div class="accent-card reveal reveal-delay-2">
+                    <h3>Claude AI Vision</h3>
+                    <p>Нейросеть анализирует изображение и структурирует данные автоматически — без ручного ввода</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== SLIDE 5: GOOGLE SHEETS ===== -->
+    <section class="slide" id="slide-5">
+        <span class="section-number">04</span>
+        <div class="bg-grid"></div>
+        <div class="orange-glow" style="bottom: -25%; left: -10%;"></div>
+        <div class="slide-content">
+            <h2 class="reveal">Google Таблицы</h2>
+            <div class="divider reveal reveal-delay-1"></div>
+            <div class="features-grid">
+                <div class="feature-card reveal reveal-delay-1">
+                    <div class="icon">📊</div>
+                    <h3>Автозапись</h3>
+                    <p>Данные из чеков сразу попадают в нужные столбцы таблицы</p>
+                </div>
+                <div class="feature-card reveal reveal-delay-2">
+                    <div class="icon">📋</div>
+                    <h3>Несколько таблиц</h3>
+                    <p>Финансы, гиды, туристы — каждая база в своей таблице</p>
+                </div>
+                <div class="feature-card reveal reveal-delay-3">
+                    <div class="icon">🔍</div>
+                    <h3>Поиск и фильтры</h3>
+                    <p>Быстрый поиск по всем записям прямо из Telegram</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== SLIDE 6: CALENDAR ===== -->
+    <section class="slide" id="slide-6">
+        <span class="section-number">05</span>
+        <div class="bg-grid"></div>
+        <div class="slide-content">
+            <h2 class="reveal">Календарь</h2>
+            <div class="two-col">
+                <div>
+                    <ul class="bullet-list">
+                        <li class="reveal reveal-delay-1">Создание событий голосом или текстом</li>
+                        <li class="reveal reveal-delay-2">Несколько календарей: работа, личный, семья</li>
+                        <li class="reveal reveal-delay-3">Перемещение, редактирование, удаление</li>
+                        <li class="reveal reveal-delay-4">Статусы событий: активно, выполнено</li>
+                    </ul>
+                </div>
+                <div class="feature-card reveal reveal-delay-2" style="border-color: var(--orange);">
+                    <div class="icon">📅</div>
+                    <h3>Google Calendar API</h3>
+                    <p>Полная двусторонняя синхронизация с Google Calendar</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== SLIDE 7: SUBSCRIPTIONS ===== -->
+    <section class="slide" id="slide-7">
+        <span class="section-number">06</span>
+        <div class="bg-grid"></div>
+        <div class="orange-glow" style="top: -15%; right: -15%;"></div>
+        <div class="slide-content">
+            <h2 class="reveal">Подписки и регулярные расходы</h2>
+            <div class="divider reveal reveal-delay-1"></div>
+            <div class="features-grid">
+                <div class="feature-card reveal reveal-delay-1">
+                    <div class="icon">🔄</div>
+                    <h3>Трекинг подписок</h3>
+                    <p>Учёт всех регулярных платежей с частотой и суммами</p>
+                </div>
+                <div class="feature-card reveal reveal-delay-2">
+                    <div class="icon">💰</div>
+                    <h3>Месячный расчёт</h3>
+                    <p>Автоматический подсчёт ежемесячных расходов на подписки</p>
+                </div>
+                <div class="feature-card reveal reveal-delay-3">
+                    <div class="icon">📈</div>
+                    <h3>Аналитика</h3>
+                    <p>Общая сумма, разбивка по категориям и приоритетам</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== SLIDE 8: GUIDES DATABASE ===== -->
+    <section class="slide" id="slide-8">
+        <span class="section-number">07</span>
+        <div class="bg-grid"></div>
+        <div class="slide-content">
+            <h2 class="reveal">База гидов</h2>
+            <div class="two-col">
+                <div>
+                    <ul class="bullet-list">
+                        <li class="reveal reveal-delay-1">Гиды по странам и городам</li>
+                        <li class="reveal reveal-delay-2">Контакты, услуги, специализации</li>
+                        <li class="reveal reveal-delay-3">Быстрый поиск по направлению</li>
+                        <li class="reveal reveal-delay-4">Интеграция с базой знаний</li>
+                    </ul>
+                </div>
+                <div class="accent-card reveal reveal-delay-2">
+                    <h3>Мгновенный доступ</h3>
+                    <p>Найдите нужного гида за секунды — по стране, городу или типу услуги</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== SLIDE 9: CLIENTS ===== -->
+    <section class="slide" id="slide-9">
+        <span class="section-number">08</span>
+        <div class="bg-grid"></div>
+        <div class="orange-glow" style="bottom: -20%; right: -10%;"></div>
+        <div class="slide-content">
+            <h2 class="reveal">Управление клиентами</h2>
+            <div class="divider reveal reveal-delay-1"></div>
+            <div class="features-grid" style="grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));">
+                <div class="feature-card reveal reveal-delay-1">
+                    <div class="icon">👤</div>
+                    <h3>Профили</h3>
+                    <p>Полная карточка клиента с историей</p>
+                </div>
+                <div class="feature-card reveal reveal-delay-2">
+                    <div class="icon">📍</div>
+                    <h3>Статусы</h3>
+                    <p>Отслеживание этапа работы с туристом</p>
+                </div>
+                <div class="feature-card reveal reveal-delay-3">
+                    <div class="icon">🔗</div>
+                    <h3>Связи</h3>
+                    <p>Привязка к гидам, турам и платежам</p>
+                </div>
+                <div class="feature-card reveal reveal-delay-4">
+                    <div class="icon">📱</div>
+                    <h3>Telegram</h3>
+                    <p>Всё управление через мессенджер</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== SLIDE 10: TASKS ===== -->
+    <section class="slide" id="slide-10">
+        <span class="section-number">09</span>
+        <div class="bg-grid"></div>
+        <div class="slide-content">
+            <h2 class="reveal">Задачи</h2>
+            <div class="two-col">
+                <div>
+                    <ul class="bullet-list">
+                        <li class="reveal reveal-delay-1">Создание задач прямо в чате</li>
+                        <li class="reveal reveal-delay-2">Назначение сроков и приоритетов</li>
+                        <li class="reveal reveal-delay-3">Отметки о выполнении</li>
+                        <li class="reveal reveal-delay-4">Интеграция с календарём</li>
+                    </ul>
+                </div>
+                <div class="feature-card reveal reveal-delay-2" style="border-color: var(--orange);">
+                    <div class="icon">✅</div>
+                    <h3>Простота</h3>
+                    <p>Никаких сложных интерфейсов — отправьте сообщение и задача создана</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== SLIDE 11: TECH STACK ===== -->
+    <section class="slide" id="slide-11">
+        <span class="section-number">10</span>
+        <div class="bg-grid"></div>
+        <div class="orange-glow" style="top: -20%; left: -10%;"></div>
+        <div class="slide-content">
+            <h2 class="reveal">Технологии</h2>
+            <div class="divider reveal reveal-delay-1"></div>
+            <p class="reveal reveal-delay-1" style="color: var(--white-muted); max-width: min(90vw, 600px);">
+                Современный стек для надёжной и масштабируемой работы
+            </p>
+            <div class="tech-tags reveal reveal-delay-2">
+                <span class="tech-tag highlight">Python</span>
+                <span class="tech-tag highlight">Claude AI (Anthropic)</span>
+                <span class="tech-tag">aiogram</span>
+                <span class="tech-tag">gspread</span>
+                <span class="tech-tag">Google Calendar API</span>
+                <span class="tech-tag">Google Sheets API</span>
+                <span class="tech-tag">Telegram Bot API</span>
+                <span class="tech-tag">Google Cloud</span>
+            </div>
+            <ul class="bullet-list" style="margin-top: var(--content-gap);">
+                <li class="reveal reveal-delay-3">AI-распознавание документов через Claude Vision</li>
+                <li class="reveal reveal-delay-4">Деплой через Procfile — один процесс, стабильная работа</li>
+            </ul>
+        </div>
+    </section>
+
+    <!-- ===== SLIDE 12: CTA ===== -->
+    <section class="slide" id="slide-12">
+        <div class="bg-grid"></div>
+        <div class="orange-glow" style="bottom: -20%; left: 30%;"></div>
+        <div class="slide-content" style="align-items: center; text-align: center;">
+            <div class="reveal">
+                <div class="divider" style="margin: 0 auto var(--element-gap);"></div>
+                <h2 style="font-size: var(--title-size);">Finance Bot</h2>
+                <p class="slide-subtitle" style="margin-bottom: var(--content-gap);">Всё управление бизнесом — в одном чате</p>
+            </div>
+            <ul class="cta-list">
+                <li class="reveal reveal-delay-1"><span class="check">&#10003;</span> Распознавание документов через AI</li>
+                <li class="reveal reveal-delay-2"><span class="check">&#10003;</span> Автоматический финансовый учёт</li>
+                <li class="reveal reveal-delay-3"><span class="check">&#10003;</span> Календарь, задачи, подписки</li>
+                <li class="reveal reveal-delay-4"><span class="check">&#10003;</span> База гидов и клиентов</li>
+            </ul>
+        </div>
+    </section>
+
+    <!-- ===== JAVASCRIPT ===== -->
+    <script>
+        /* Presentation Controller */
+        class PresentationController {
+            constructor() {
+                this.slides = document.querySelectorAll('.slide');
+                this.totalSlides = this.slides.length;
+                this.currentIndex = 0;
+                this.isScrolling = false;
+                this.touchStartY = 0;
+                this.touchStartX = 0;
+
+                document.getElementById('totalSlides').textContent =
+                    String(this.totalSlides).padStart(2, '0');
+
+                this.initKeyboard();
+                this.initWheel();
+                this.initTouch();
+                this.initObserver();
+                this.updateProgress();
+            }
+
+            goTo(index) {
+                if (index < 0 || index >= this.totalSlides) return;
+                this.currentIndex = index;
+                this.slides[index].scrollIntoView({ behavior: 'smooth' });
+                this.updateProgress();
+            }
+
+            next() { this.goTo(this.currentIndex + 1); }
+            prev() { this.goTo(this.currentIndex - 1); }
+
+            updateProgress() {
+                const pct = ((this.currentIndex + 1) / this.totalSlides) * 100;
+                document.getElementById('progressBar').style.width = pct + '%';
+                document.getElementById('currentSlide').textContent =
+                    String(this.currentIndex + 1).padStart(2, '0');
+            }
+
+            initKeyboard() {
+                document.addEventListener('keydown', (e) => {
+                    switch (e.key) {
+                        case 'ArrowDown':
+                        case 'ArrowRight':
+                        case ' ':
+                        case 'PageDown':
+                            e.preventDefault();
+                            this.next();
+                            break;
+                        case 'ArrowUp':
+                        case 'ArrowLeft':
+                        case 'PageUp':
+                            e.preventDefault();
+                            this.prev();
+                            break;
+                        case 'Home':
+                            e.preventDefault();
+                            this.goTo(0);
+                            break;
+                        case 'End':
+                            e.preventDefault();
+                            this.goTo(this.totalSlides - 1);
+                            break;
+                    }
+                });
+            }
+
+            initWheel() {
+                document.addEventListener('wheel', (e) => {
+                    if (this.isScrolling) return;
+                    this.isScrolling = true;
+
+                    if (e.deltaY > 30) this.next();
+                    else if (e.deltaY < -30) this.prev();
+
+                    setTimeout(() => { this.isScrolling = false; }, 800);
+                }, { passive: true });
+            }
+
+            initTouch() {
+                document.addEventListener('touchstart', (e) => {
+                    this.touchStartY = e.touches[0].clientY;
+                    this.touchStartX = e.touches[0].clientX;
+                }, { passive: true });
+
+                document.addEventListener('touchend', (e) => {
+                    const deltaY = this.touchStartY - e.changedTouches[0].clientY;
+                    const deltaX = this.touchStartX - e.changedTouches[0].clientX;
+
+                    if (Math.abs(deltaY) < 50 && Math.abs(deltaX) < 50) return;
+
+                    if (Math.abs(deltaY) > Math.abs(deltaX)) {
+                        if (deltaY > 0) this.next();
+                        else this.prev();
+                    } else {
+                        if (deltaX > 0) this.next();
+                        else this.prev();
+                    }
+                }, { passive: true });
+            }
+
+            initObserver() {
+                const observer = new IntersectionObserver((entries) => {
+                    entries.forEach((entry) => {
+                        if (entry.isIntersecting) {
+                            const index = Array.from(this.slides).indexOf(entry.target);
+                            if (index !== -1) {
+                                this.currentIndex = index;
+                                this.updateProgress();
+                            }
+                            entry.target.querySelectorAll('.reveal').forEach((el) => {
+                                el.classList.add('visible');
+                            });
+                        }
+                    });
+                }, { threshold: 0.5 });
+
+                this.slides.forEach((slide) => observer.observe(slide));
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            new PresentationController();
+        });
+    </script>
+</body>
+</html>

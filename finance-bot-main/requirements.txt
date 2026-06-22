@@ -1,0 +1,11 @@
+aiogram==3.13.1
+anthropic==0.40.0
+gspread==6.1.4
+google-auth==2.35.0
+google-api-python-client==2.150.0
+matplotlib==3.9.2
+Pillow==10.4.0
+beautifulsoup4
+plotly==5.24.1
+kaleido==0.2.1
+
