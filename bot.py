@@ -21,7 +21,7 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 CLAUDE_API_KEY = os.environ.get("CLAUDE_API_KEY", "")
 SPREADSHEET_ID_1 = "16PDYLk1FTYBXQCS55VKr8yq6QWiWIihisHCW8vD6JQo"
 SPREADSHEET_ID_2 = "1paRk3fvQzwVwK7JyO6RIdjIJGrveBfhyMwD4UtkgJ7I"
-ALLOWED_USERS = [7086707589, 469985712]
+ALLOWED_USERS = [7086707589, 469985712, 12620985]
 # Только этот пользователь получает напоминания календаря и утренний дайджест
 NOTIFY_USERS = [469985712]
 # Дневник питания — только для одного владельца
