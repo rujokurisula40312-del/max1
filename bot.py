@@ -954,22 +954,22 @@ async def cmd_start(event: MessageCreated):
 @router.message_callback(F.callback.payload == "nav_main")
 async def kb_back_main(event: MessageCallback):
     cb = event.callback; msg = event.message
-    if not allowed(msg.sender.user_id): return
-    clear_all_states(msg.sender.user_id)
+    if not allowed(cb.user.user_id): return
+    clear_all_states(cb.user.user_id)
     await msg.answer(text="🏠 Главное меню:", attachments=[KB_MAIN])
 
 # -- Кнопки дневника питания --
 @router.message_callback(F.callback.payload == "nav_warmup")
 async def kb_warmup(event: MessageCallback):
     cb = event.callback; msg = event.message
-    if not allowed(msg.sender.user_id): return
-    clear_all_states(msg.sender.user_id)
+    if not allowed(cb.user.user_id): return
+    clear_all_states(cb.user.user_id)
     await warmup_module.cmd_warmup(msg) if warmup_module else await msg.answer(text="Модуль прогрева не загружен.")
 
 @router.message_callback(F.callback.payload == "nav_nutrition")
 async def kb_nutrition(event: MessageCallback):
     cb = event.callback; msg = event.message
-    uid = msg.sender.user_id
+    uid = cb.user.user_id
     if not allowed(uid): return
     if uid != NUTRITION_OWNER_USER_ID:
         await msg.answer(text="Это личный модуль.")
@@ -1026,22 +1026,22 @@ async def kb_nutr_goal(event: MessageCallback):
 @router.message_callback(F.callback.payload == "nav_finance")
 async def kb_back_finance(event: MessageCallback):
     cb = event.callback; msg = event.message
-    if not allowed(msg.sender.user_id): return
-    clear_all_states(msg.sender.user_id)
+    if not allowed(cb.user.user_id): return
+    clear_all_states(cb.user.user_id)
     await msg.answer(text="💰 <b>Финучёт</b>", attachments=[KB_FINANCE])
 
 @router.message_callback(F.callback.payload == "nav_knowledge")
 async def kb_back_knowledge(event: MessageCallback):
     cb = event.callback; msg = event.message
-    if not allowed(msg.sender.user_id): return
-    clear_all_states(msg.sender.user_id)
+    if not allowed(cb.user.user_id): return
+    clear_all_states(cb.user.user_id)
     await msg.answer(text="📚 <b>База знаний</b>", attachments=[KB_KNOWLEDGE])
 
 # -- Главное меню --
 @router.message_callback(F.callback.payload == "nav_finance")
 async def kb_finance(event: MessageCallback):
     cb = event.callback; msg = event.message
-    uid = msg.sender.user_id
+    uid = cb.user.user_id
     if not allowed(uid): return
     clear_all_states(uid)
     user_states[uid] = {"table": 1}
@@ -1051,7 +1051,7 @@ async def kb_finance(event: MessageCallback):
 @router.message_callback(F.callback.payload == "nav_calendar")
 async def kb_calendar(event: MessageCallback):
     cb = event.callback; msg = event.message
-    uid = msg.sender.user_id
+    uid = cb.user.user_id
     if not allowed(uid): return
     clear_all_states(uid)
     try:
@@ -1063,15 +1063,15 @@ async def kb_calendar(event: MessageCallback):
 @router.message_callback(F.callback.payload == "nav_knowledge")
 async def kb_knowledge(event: MessageCallback):
     cb = event.callback; msg = event.message
-    if not allowed(msg.sender.user_id): return
-    clear_all_states(msg.sender.user_id)
+    if not allowed(cb.user.user_id): return
+    clear_all_states(cb.user.user_id)
     await msg.answer(text="📚 <b>База знаний</b>", attachments=[KB_KNOWLEDGE])
 
 # -- Финучёт подменю --
 @router.message_callback(F.callback.payload == "nav_dds")
 async def kb_table1(event: MessageCallback):
     cb = event.callback; msg = event.message
-    uid = msg.sender.user_id
+    uid = cb.user.user_id
     if not allowed(uid): return
     clear_all_states(uid)
     user_states[uid] = {"table": 1}
@@ -1081,7 +1081,7 @@ async def kb_table1(event: MessageCallback):
 @router.message_callback(F.callback.payload == "nav_kudir")
 async def kb_table2(event: MessageCallback):
     cb = event.callback; msg = event.message
-    uid = msg.sender.user_id
+    uid = cb.user.user_id
     if not allowed(uid): return
     clear_all_states(uid)
     user_states[uid] = {"table": 2}
@@ -1091,7 +1091,7 @@ async def kb_table2(event: MessageCallback):
 @router.message_callback(F.callback.payload == "nav_subs")
 async def kb_subs(event: MessageCallback):
     cb = event.callback; msg = event.message
-    uid = msg.sender.user_id
+    uid = cb.user.user_id
     if not allowed(uid): return
     clear_all_states(uid)
     user_states[uid] = {"table": "subs"}
@@ -1101,7 +1101,7 @@ async def kb_subs(event: MessageCallback):
 @router.message_callback(F.callback.payload == "nav_subs_plan")
 async def kb_subs_plan(event: MessageCallback):
     cb = event.callback; msg = event.message
-    if not allowed(msg.sender.user_id): return
+    if not allowed(cb.user.user_id): return
     subs = subs_get_all()
     if not subs: await msg.answer(text="Подписок нет."); return
     await msg.answer(subs_build_plan(subs))
@@ -1109,13 +1109,13 @@ async def kb_subs_plan(event: MessageCallback):
 @router.message_callback(F.callback.payload == "nav_subs_all")
 async def kb_subs_all(event: MessageCallback):
     cb = event.callback; msg = event.message
-    if not allowed(msg.sender.user_id): return
+    if not allowed(cb.user.user_id): return
     await subs_show_all(msg)
 
 @router.message_callback(F.callback.payload == "nav_subs_del")
 async def kb_subs_del(event: MessageCallback):
     cb = event.callback; msg = event.message
-    uid = msg.sender.user_id
+    uid = cb.user.user_id
     if not allowed(uid): return
     user_states[uid] = {"table": "subs"}
     await subs_ask_delete(msg, uid)
@@ -1124,7 +1124,7 @@ async def kb_subs_del(event: MessageCallback):
 @router.message_callback(F.callback.payload == "nav_cal_today")
 async def kb_cal_today(event: MessageCallback):
     cb = event.callback; msg = event.message
-    uid = msg.sender.user_id
+    uid = cb.user.user_id
     if not allowed(uid): return
     try:
         from calendar_module import show_checklist, now_msk
@@ -1135,7 +1135,7 @@ async def kb_cal_today(event: MessageCallback):
 @router.message_callback(F.callback.payload == "nav_cal_week")
 async def kb_cal_week(event: MessageCallback):
     cb = event.callback; msg = event.message
-    if not allowed(msg.sender.user_id): return
+    if not allowed(cb.user.user_id): return
     try:
         from calendar_module import show_week
         await show_week(msg)
@@ -1145,7 +1145,7 @@ async def kb_cal_week(event: MessageCallback):
 @router.message_callback(F.callback.payload == "nav_cal_add")
 async def kb_cal_add(event: MessageCallback):
     cb = event.callback; msg = event.message
-    uid = msg.sender.user_id
+    uid = cb.user.user_id
     if not allowed(uid): return
     try:
         from calendar_module import cal_states as cs
@@ -1157,8 +1157,8 @@ async def kb_cal_add(event: MessageCallback):
 @router.message_callback(F.callback.payload == "nav_guides")
 async def kb_guides(event: MessageCallback):
     cb = event.callback; msg = event.message
-    if not allowed(msg.sender.user_id): return
-    clear_all_states(msg.sender.user_id)
+    if not allowed(cb.user.user_id): return
+    clear_all_states(cb.user.user_id)
     # Автоопределение URL Railway
     webapp_url = os.environ.get("WEBAPP_URL", "").strip()
     if not webapp_url:
@@ -1175,7 +1175,7 @@ async def kb_guides(event: MessageCallback):
 @router.message_callback(F.callback.payload == "nav_travel")
 async def kb_travel(event: MessageCallback):
     cb = event.callback; msg = event.message
-    uid = msg.sender.user_id
+    uid = cb.user.user_id
     if not allowed(uid): return
     clear_all_states(uid)
     user_states[uid] = {"table": "travel"}
@@ -1184,7 +1184,7 @@ async def kb_travel(event: MessageCallback):
 @router.message_callback(F.callback.payload == "nav_country")
 async def kb_country(event: MessageCallback):
     cb = event.callback; msg = event.message
-    uid = msg.sender.user_id
+    uid = cb.user.user_id
     if not allowed(uid): return
     clear_all_states(uid)
     user_states[uid] = {"table": "knowledge"}
@@ -1194,7 +1194,7 @@ async def kb_country(event: MessageCallback):
 @router.message_callback(F.callback.payload == "nav_add_guide")
 async def kb_add_guide(event: MessageCallback):
     cb = event.callback; msg = event.message
-    uid = msg.sender.user_id
+    uid = cb.user.user_id
     if not allowed(uid): return
     clear_all_states(uid)
     guide_docs[uid] = []
@@ -1204,7 +1204,7 @@ async def kb_add_guide(event: MessageCallback):
 @router.message_callback(F.callback.payload == "nav_find_guide")
 async def kb_find_guide(event: MessageCallback):
     cb = event.callback; msg = event.message
-    uid = msg.sender.user_id
+    uid = cb.user.user_id
     if not allowed(uid): return
     clear_all_states(uid)
     user_states[uid] = {"table": "guide_search", "step": "guide_search"}
@@ -1214,7 +1214,7 @@ async def kb_find_guide(event: MessageCallback):
 @router.message_callback(F.callback.payload == "nav_travel_add")
 async def kb_travel_add(event: MessageCallback):
     cb = event.callback; msg = event.message
-    uid = msg.sender.user_id
+    uid = cb.user.user_id
     if not allowed(uid): return
     user_states[uid] = {"table": "travel", "step": "trip_new_date_start", "_new_trip": {}}
     kb = _make_kb([
@@ -1225,33 +1225,33 @@ async def kb_travel_add(event: MessageCallback):
 @router.message_callback(F.callback.payload == "nav_travel_current")
 async def kb_travel_current(event: MessageCallback):
     cb = event.callback; msg = event.message
-    if not allowed(msg.sender.user_id): return
+    if not allowed(cb.user.user_id): return
     await travel_show_current(msg)
 
 @router.message_callback(F.callback.payload == "nav_expense_add")
 async def kb_expense_add(event: MessageCallback):
     cb = event.callback; msg = event.message
-    uid = msg.sender.user_id
+    uid = cb.user.user_id
     if not allowed(uid): return
     await expense_show_trip_picker(msg, uid)
 
 @router.message_callback(F.callback.payload == "nav_expense_total")
 async def kb_expense_total(event: MessageCallback):
     cb = event.callback; msg = event.message
-    uid = msg.sender.user_id
+    uid = cb.user.user_id
     if not allowed(uid): return
     await expense_show_total_picker(msg, uid)
 
 @router.message_callback(F.callback.payload == "nav_travel_all")
 async def kb_travel_all(event: MessageCallback):
     cb = event.callback; msg = event.message
-    if not allowed(msg.sender.user_id): return
+    if not allowed(cb.user.user_id): return
     await travel_show_all(msg)
 
 @router.message_callback(F.callback.payload == "nav_travel_search")
 async def kb_travel_search(event: MessageCallback):
     cb = event.callback; msg = event.message
-    uid = msg.sender.user_id
+    uid = cb.user.user_id
     if not allowed(uid): return
     user_states[uid] = {"table": "travel", "step": "travel_search"}
     await msg.answer(text="Напиши страну или город:")
@@ -1260,7 +1260,7 @@ async def kb_travel_search(event: MessageCallback):
 @router.message_callback(F.callback.payload == "nav_kb_search")
 async def kb_kb_search(event: MessageCallback):
     cb = event.callback; msg = event.message
-    uid = msg.sender.user_id
+    uid = cb.user.user_id
     if not allowed(uid): return
     user_states[uid] = {"table": "knowledge", "step": "knowledge_search"}
     await msg.answer(text="Напиши страну:")
@@ -1268,7 +1268,7 @@ async def kb_kb_search(event: MessageCallback):
 @router.message_callback(F.callback.payload == "nav_kb_add")
 async def kb_kb_add(event: MessageCallback):
     cb = event.callback; msg = event.message
-    uid = msg.sender.user_id
+    uid = cb.user.user_id
     if not allowed(uid): return
     user_states[uid] = {"table": "knowledge", "step": "knowledge_add"}
     await msg.answer(text="Напиши или отправь информацию о стране:")
@@ -1278,22 +1278,22 @@ async def kb_kb_add(event: MessageCallback):
 @router.message_callback(F.callback.payload == "nav_orders")
 async def kb_orders(event: MessageCallback):
     cb = event.callback; msg = event.message
-    if not allowed(msg.sender.user_id): return
-    clear_all_states(msg.sender.user_id)
+    if not allowed(cb.user.user_id): return
+    clear_all_states(cb.user.user_id)
     await msg.answer(text="📦 <b>Заказы</b>", attachments=[KB_ORDERS])
 
 @router.message_callback(F.callback.payload == "nav_orders")
 async def kb_back_orders(event: MessageCallback):
     cb = event.callback; msg = event.message
-    if not allowed(msg.sender.user_id): return
-    clear_all_states(msg.sender.user_id)
+    if not allowed(cb.user.user_id): return
+    clear_all_states(cb.user.user_id)
     await msg.answer(text="📦 <b>Заказы</b>", attachments=[KB_ORDERS])
 
 @router.message_callback(F.callback.payload == "nav_uon_search")
 async def kb_uon_search(event: MessageCallback):
     cb = event.callback; msg = event.message
-    if not allowed(msg.sender.user_id): return
-    clear_all_states(msg.sender.user_id)
+    if not allowed(cb.user.user_id): return
+    clear_all_states(cb.user.user_id)
     try:
         from uon_module import start_search as _uon_start
         await _uon_start(msg)
@@ -1304,7 +1304,7 @@ async def kb_uon_search(event: MessageCallback):
 @router.message_callback(F.callback.payload == "nav_tourists")
 async def kb_tourists(event: MessageCallback):
     cb = event.callback; msg = event.message
-    uid = msg.sender.user_id
+    uid = cb.user.user_id
     if not allowed(uid): return
     clear_all_states(uid)
     await msg.answer(text="👥 <b>База туристов</b>\n\nОтправь информацию о туристе (текст, скрин, голосовое, PDF) или выбери действие:", attachments=[KB_TOURISTS])
@@ -1312,7 +1312,7 @@ async def kb_tourists(event: MessageCallback):
 @router.message_callback(F.callback.payload == "nav_tourist_add")
 async def kb_tourist_add(event: MessageCallback):
     cb = event.callback; msg = event.message
-    uid = msg.sender.user_id
+    uid = cb.user.user_id
     if not allowed(uid): return
     clear_all_states(uid)
     tourist_docs[uid] = []
@@ -1322,7 +1322,7 @@ async def kb_tourist_add(event: MessageCallback):
 @router.message_callback(F.callback.payload == "nav_tourist_find")
 async def kb_tourist_find(event: MessageCallback):
     cb = event.callback; msg = event.message
-    uid = msg.sender.user_id
+    uid = cb.user.user_id
     if not allowed(uid): return
     clear_all_states(uid)
     user_states[uid] = {"table": "tourists", "step": "tourist_search"}
@@ -1331,14 +1331,14 @@ async def kb_tourist_find(event: MessageCallback):
 @router.message_callback(F.callback.payload == "nav_tourist_all")
 async def kb_tourist_all(event: MessageCallback):
     cb = event.callback; msg = event.message
-    uid = msg.sender.user_id
+    uid = cb.user.user_id
     if not allowed(uid): return
     await tourist_show_all(msg)
 
 @router.message_callback(F.callback.payload == "nav_tourist_status")
 async def kb_tourist_by_status(event: MessageCallback):
     cb = event.callback; msg = event.message
-    uid = msg.sender.user_id
+    uid = cb.user.user_id
     if not allowed(uid): return
     kb = _make_kb([
         [CallbackButton(text=f"{s}", payload=f"tfilter_{s}")] for s in TOURIST_STATUSES
@@ -1348,7 +1348,7 @@ async def kb_tourist_by_status(event: MessageCallback):
 @router.message_callback(F.callback.payload == "nav_tourist_portrait")
 async def kb_tourist_portrait(event: MessageCallback):
     cb = event.callback; msg = event.message
-    uid = msg.sender.user_id
+    uid = cb.user.user_id
     if not allowed(uid): return
     kb = _make_kb([
         [LinkButton(text="Открыть анализатор клиента", url="https://persona-digest-ai.lovable.app/")],
@@ -1358,7 +1358,7 @@ async def kb_tourist_portrait(event: MessageCallback):
 @router.message_callback(F.callback.payload == "nav_tourist_list")
 async def kb_tourist_base(event: MessageCallback):
     cb = event.callback; msg = event.message
-    if not allowed(msg.sender.user_id): return
+    if not allowed(cb.user.user_id): return
     kb = _make_kb([
         [LinkButton(text="Открыть таблицу", url="https://docs.google.com/spreadsheets/d/1VkAAQH7z69wXzCXgWA8HAzJj0-WHZwWohQUqw5fqViE/edit")],
     ])
@@ -1367,7 +1367,7 @@ async def kb_tourist_base(event: MessageCallback):
 @router.message_callback(F.callback.payload == "nav_tourist_edit")
 async def kb_tourist_edit(event: MessageCallback):
     cb = event.callback; msg = event.message
-    uid = msg.sender.user_id
+    uid = cb.user.user_id
     if not allowed(uid): return
     user_states[uid] = {"table": "tourists", "step": "tourist_edit_search"}
     await msg.answer(text="Напиши ФИО туриста для редактирования:")
@@ -1376,16 +1376,16 @@ async def kb_tourist_edit(event: MessageCallback):
 @router.message_callback(F.callback.payload == "nav_tasks")
 async def kb_tasks(event: MessageCallback):
     cb = event.callback; msg = event.message
-    if not allowed(msg.sender.user_id): return
-    clear_all_states(msg.sender.user_id)
-    user_states[msg.sender.user_id] = {"table": "tasks", "step": "task_new"}
+    if not allowed(cb.user.user_id): return
+    clear_all_states(cb.user.user_id)
+    user_states[cb.user.user_id] = {"table": "tasks", "step": "task_new"}
     await msg.answer(text="📋 <b>Задачи</b>\nНапиши задачу или выбери действие:", attachments=[KB_TASKS])
     await task_show_active(msg)
 
 @router.message_callback(F.callback.payload == "nav_task_add")
 async def kb_task_new(event: MessageCallback):
     cb = event.callback; msg = event.message
-    uid = msg.sender.user_id
+    uid = cb.user.user_id
     if not allowed(uid): return
     user_states[uid] = {"table": "tasks", "step": "task_new"}
     await msg.answer(text="Опиши задачу, например:\n«для Ольга сделать аудиогид до 20.04»\n«Анастасия К: отправить документы до пятницы»\n«Сергей М: проверить оплату»")
@@ -1393,7 +1393,7 @@ async def kb_task_new(event: MessageCallback):
 @router.message_callback(F.callback.payload == "nav_task_by_person")
 async def kb_task_by_person(event: MessageCallback):
     cb = event.callback; msg = event.message
-    if not allowed(msg.sender.user_id): return
+    if not allowed(cb.user.user_id): return
     kb = _make_kb([
         [CallbackButton(text=p, payload=f"taskown_{p}")] for p in TASK_PEOPLE
     ] + [[CallbackButton(text="Без ответственного", payload="taskown_без")],
@@ -1404,13 +1404,13 @@ async def kb_task_by_person(event: MessageCallback):
 @router.message_callback(F.callback.payload == "nav_task_archive")
 async def kb_task_archive(event: MessageCallback):
     cb = event.callback; msg = event.message
-    if not allowed(msg.sender.user_id): return
+    if not allowed(cb.user.user_id): return
     await task_show_archive(msg)
 
 @router.message_callback(F.callback.payload == "nav_task_complete")
 async def kb_task_done(event: MessageCallback):
     cb = event.callback; msg = event.message
-    uid = msg.sender.user_id
+    uid = cb.user.user_id
     if not allowed(uid): return
     # Открываем список активных задач — тапни номер → карточка с действиями.
     await task_show_active(msg)
@@ -1418,7 +1418,7 @@ async def kb_task_done(event: MessageCallback):
 @router.message_callback(F.callback.payload == "nav_ideas_notion")
 async def kb_ideas_voice(event: MessageCallback):
     cb = event.callback; msg = event.message
-    uid = msg.sender.user_id
+    uid = cb.user.user_id
     if not allowed(uid): return
     user_states[uid] = {"table": "ideas", "step": "ideas_voice_wait"}
     await msg.answer(
@@ -1430,7 +1430,7 @@ async def kb_ideas_voice(event: MessageCallback):
 @router.message_callback(F.callback.payload == "nav_ideas_all")
 async def kb_ideas_list(event: MessageCallback):
     cb = event.callback; msg = event.message
-    uid = msg.sender.user_id
+    uid = cb.user.user_id
     if not allowed(uid): return
     w = await msg.answer(text="Собираю список идей из Notion...")
     parent = await asyncio.to_thread(_ideas_parent_id)
@@ -1463,14 +1463,14 @@ async def kb_ideas_list(event: MessageCallback):
 @router.message_callback(F.callback.payload == "nav_media")
 async def kb_media(event: MessageCallback):
     cb = event.callback; msg = event.message
-    if not allowed(msg.sender.user_id): return
-    clear_all_states(msg.sender.user_id)
+    if not allowed(cb.user.user_id): return
+    clear_all_states(cb.user.user_id)
     await msg.answer(text="📁 <b>Медиатека</b>", attachments=[KB_MEDIA])
 
 @router.message_callback(F.callback.payload == "nav_media_add")
 async def kb_media_add(event: MessageCallback):
     cb = event.callback; msg = event.message
-    uid = msg.sender.user_id
+    uid = cb.user.user_id
     if not allowed(uid): return
     user_states[uid] = {"table": "media", "step": "media_add"}
     await msg.answer(text="Отправь ссылку на видео/PDF и описание.\nНапример:\n«https://youtu.be/xxx Обзор круизов MSC 2026»")
@@ -1478,7 +1478,7 @@ async def kb_media_add(event: MessageCallback):
 @router.message_callback(F.callback.payload == "nav_media_find")
 async def kb_media_search(event: MessageCallback):
     cb = event.callback; msg = event.message
-    uid = msg.sender.user_id
+    uid = cb.user.user_id
     if not allowed(uid): return
     user_states[uid] = {"table": "media", "step": "media_search"}
     await msg.answer(text="Что найти? Напиши название или тему:")
@@ -1486,14 +1486,14 @@ async def kb_media_search(event: MessageCallback):
 @router.message_callback(F.callback.payload == "nav_media_all")
 async def kb_media_all(event: MessageCallback):
     cb = event.callback; msg = event.message
-    if not allowed(msg.sender.user_id): return
+    if not allowed(cb.user.user_id): return
     await media_show_all(msg)
 
 # -- Инструкции (Google Docs) --
 @router.message_callback(F.callback.payload == "nav_instructions")
 async def kb_instructions(event: MessageCallback):
     cb = event.callback; msg = event.message
-    uid = msg.sender.user_id
+    uid = cb.user.user_id
     if not allowed(uid): return
     clear_all_states(uid)
     await msg.answer(text="📘 <b>Инструкции</b>\n\nСоздавай визуальные инструкции в Google Docs — с текстом и скринами.", attachments=[KB_INSTRUCTIONS])
@@ -1501,7 +1501,7 @@ async def kb_instructions(event: MessageCallback):
 @router.message_callback(F.callback.payload == "nav_instr_new")
 async def kb_instruction_new(event: MessageCallback):
     cb = event.callback; msg = event.message
-    uid = msg.sender.user_id
+    uid = cb.user.user_id
     if not allowed(uid): return
     instructions_draft[uid] = {"title": None, "kind": "instruction", "steps": []}
     user_states[uid] = {"table": "instructions", "step": "inst_title"}
@@ -1510,7 +1510,7 @@ async def kb_instruction_new(event: MessageCallback):
 @router.message_callback(F.callback.payload == "nav_instr_article")
 async def kb_article_new(event: MessageCallback):
     cb = event.callback; msg = event.message
-    uid = msg.sender.user_id
+    uid = cb.user.user_id
     if not allowed(uid): return
     instructions_draft[uid] = {"title": None, "kind": "article", "steps": []}
     user_states[uid] = {"table": "instructions", "step": "inst_title"}
@@ -1519,7 +1519,7 @@ async def kb_article_new(event: MessageCallback):
 @router.message_callback(F.callback.payload == "nav_instr_all")
 async def kb_instructions_all(event: MessageCallback):
     cb = event.callback; msg = event.message
-    uid = msg.sender.user_id
+    uid = cb.user.user_id
     if not allowed(uid): return
     try:
         import urllib.request, urllib.error
@@ -1631,7 +1631,7 @@ def _recreate_list_kb(pages, offset: int) -> AttachmentButton:
 @router.message_callback(F.callback.payload == "nav_instr_recreate")
 async def kb_recreate_list(event: MessageCallback):
     cb = event.callback; msg = event.message
-    uid = msg.sender.user_id
+    uid = cb.user.user_id
     if not allowed(uid): return
     try:
         pages = _fetch_instruction_pages()
@@ -1745,7 +1745,7 @@ async def cb_recreate(cb):
 @router.message_callback(F.callback.payload == "nav_to_info")
 async def kb_passwords(event: MessageCallback):
     cb = event.callback; msg = event.message
-    uid = msg.sender.user_id
+    uid = cb.user.user_id
     if not allowed(uid): return
     clear_all_states(uid)
     if _is_authed(uid):
@@ -1763,7 +1763,7 @@ async def kb_passwords(event: MessageCallback):
 @router.message_callback(F.callback.payload == "nav_to_find")
 async def kb_pwd_search(event: MessageCallback):
     cb = event.callback; msg = event.message
-    uid = msg.sender.user_id
+    uid = cb.user.user_id
     if not allowed(uid): return
     if not _is_authed(uid):
         await msg.answer(text="Сессия истекла. Нажми «🔐 Информация о ТО» и введи пароль.", attachments=[KB_KNOWLEDGE]); return
@@ -1773,7 +1773,7 @@ async def kb_pwd_search(event: MessageCallback):
 @router.message_callback(F.callback.payload == "nav_to_all")
 async def kb_pwd_all(event: MessageCallback):
     cb = event.callback; msg = event.message
-    uid = msg.sender.user_id
+    uid = cb.user.user_id
     if not allowed(uid): return
     if not _is_authed(uid):
         await msg.answer(text="Сессия истекла. Нажми «🔐 Информация о ТО» и введи пароль.", attachments=[KB_KNOWLEDGE]); return
@@ -1782,7 +1782,7 @@ async def kb_pwd_all(event: MessageCallback):
 @router.message_callback(F.callback.payload == "nav_to_logout")
 async def kb_pwd_logout(event: MessageCallback):
     cb = event.callback; msg = event.message
-    uid = msg.sender.user_id
+    uid = cb.user.user_id
     if not allowed(uid): return
     auth_sessions.pop(uid, None)
     await msg.answer(text="Вышли из раздела. Для повторного входа нужен пароль.", attachments=[KB_KNOWLEDGE])
@@ -1790,7 +1790,7 @@ async def kb_pwd_logout(event: MessageCallback):
 @router.message_callback(F.callback.payload == "nav_rate_pac")
 async def kb_pac_rate(event: MessageCallback):
     cb = event.callback; msg = event.message
-    uid = msg.sender.user_id
+    uid = cb.user.user_id
     if not allowed(uid): return
     if not _is_authed(uid):
         await msg.answer(text="Сессия истекла. Нажми «🔐 Информация о ТО» и введи пароль.", attachments=[KB_KNOWLEDGE]); return
@@ -1802,7 +1802,7 @@ async def kb_pac_rate(event: MessageCallback):
 @router.message_callback(F.callback.payload == "nav_rate_cruclub")
 async def kb_cruclub_rate(event: MessageCallback):
     cb = event.callback; msg = event.message
-    uid = msg.sender.user_id
+    uid = cb.user.user_id
     if not allowed(uid): return
     if not _is_authed(uid):
         await msg.answer(text="Сессия истекла. Нажми «🔐 Информация о ТО» и введи пароль.", attachments=[KB_KNOWLEDGE]); return
@@ -1814,7 +1814,7 @@ async def kb_cruclub_rate(event: MessageCallback):
 @router.message_callback(F.callback.payload == "nav_rate_lavoyage")
 async def kb_lavoyage_rate(event: MessageCallback):
     cb = event.callback; msg = event.message
-    uid = msg.sender.user_id
+    uid = cb.user.user_id
     if not allowed(uid): return
     if not _is_authed(uid):
         await msg.answer(text="Сессия истекла. Нажми «🔐 Информация о ТО» и введи пароль.", attachments=[KB_KNOWLEDGE]); return
@@ -1837,7 +1837,7 @@ def _parse_rates_from_text(text: str) -> tuple[float, float]:
 @router.message_callback(F.callback.payload == "nav_calc")
 async def kb_calc_start(event: MessageCallback):
     cb = event.callback; msg = event.message
-    uid = msg.sender.user_id
+    uid = cb.user.user_id
     if not allowed(uid): return
     if not _is_authed(uid):
         await msg.answer(text="Сессия истекла. Нажми «🔐 Информация о ТО» и введи пароль.", attachments=[KB_KNOWLEDGE]); return
@@ -2043,7 +2043,7 @@ async def search_all_cruises(query: str) -> str:
 @router.message_callback(F.callback.payload == "nav_cruise_find")
 async def kb_cruise_search_start(event: MessageCallback):
     cb = event.callback; msg = event.message
-    uid = msg.sender.user_id
+    uid = cb.user.user_id
     if not allowed(uid): return
     if not _is_authed(uid):
         await msg.answer(text="Сессия истекла. Нажми «🔐 Информация о ТО» и введи пароль.", attachments=[KB_KNOWLEDGE]); return
@@ -2057,7 +2057,7 @@ async def kb_cruise_search_start(event: MessageCallback):
 @router.message_callback(F.callback.payload == "nav_visas")
 async def kb_visas(event: MessageCallback):
     cb = event.callback; msg = event.message
-    uid = msg.sender.user_id
+    uid = cb.user.user_id
     if not allowed(uid): return
     clear_all_states(uid)
     user_states[uid] = {"table": "visas", "step": "visa_search"}
@@ -2067,7 +2067,7 @@ async def kb_visas(event: MessageCallback):
 @router.message_callback(F.callback.payload == "nav_personal")
 async def kb_personal(event: MessageCallback):
     cb = event.callback; msg = event.message
-    uid = msg.sender.user_id
+    uid = cb.user.user_id
     if not allowed(uid): return
     clear_all_states(uid)
     user_states[uid] = {"table": "personal", "step": "personal_add"}
@@ -2076,7 +2076,7 @@ async def kb_personal(event: MessageCallback):
 @router.message_callback(F.callback.payload == "nav_personal_add")
 async def kb_personal_add(event: MessageCallback):
     cb = event.callback; msg = event.message
-    uid = msg.sender.user_id
+    uid = cb.user.user_id
     if not allowed(uid): return
     user_states[uid] = {"table": "personal", "step": "personal_add"}
     await msg.answer(text="Напиши или скинь что хочешь сохранить:")
@@ -2084,13 +2084,13 @@ async def kb_personal_add(event: MessageCallback):
 @router.message_callback(F.callback.payload == "nav_personal_list")
 async def kb_personal_list(event: MessageCallback):
     cb = event.callback; msg = event.message
-    if not allowed(msg.sender.user_id): return
+    if not allowed(cb.user.user_id): return
     await personal_show_active(msg)
 
 @router.message_callback(F.callback.payload == "nav_personal_cat")
 async def kb_personal_by_cat(event: MessageCallback):
     cb = event.callback; msg = event.message
-    if not allowed(msg.sender.user_id): return
+    if not allowed(cb.user.user_id): return
     kb = _make_kb([
         [CallbackButton(text=c, payload=f"pcat_{c}")] for c in PERSONAL_CATEGORIES
     ] + [[CallbackButton(text="Все", payload="pcat_все")]])
@@ -2099,7 +2099,7 @@ async def kb_personal_by_cat(event: MessageCallback):
 @router.message_callback(F.callback.payload == "nav_personal_done")
 async def kb_personal_done(event: MessageCallback):
     cb = event.callback; msg = event.message
-    uid = msg.sender.user_id
+    uid = cb.user.user_id
     if not allowed(uid): return
     # Показываем список с кнопками-галочками — тапни нужный пункт
     await personal_show_active(msg)
@@ -2108,7 +2108,7 @@ async def kb_personal_done(event: MessageCallback):
 @router.message_callback(F.callback.payload == "nav_b2b")
 async def kb_b2b(event: MessageCallback):
     cb = event.callback; msg = event.message
-    uid = msg.sender.user_id
+    uid = cb.user.user_id
     if not allowed(uid): return
     clear_all_states(uid)
     user_states[uid] = {"table": "b2b", "step": "b2b_add"}
@@ -2117,7 +2117,7 @@ async def kb_b2b(event: MessageCallback):
 @router.message_callback(F.callback.payload == "nav_b2b_add")
 async def kb_b2b_add(event: MessageCallback):
     cb = event.callback; msg = event.message
-    uid = msg.sender.user_id
+    uid = cb.user.user_id
     if not allowed(uid): return
     user_states[uid] = {"table": "b2b", "step": "b2b_add"}
     await msg.answer(text="Опиши заказ:\n«Иванов +79991234567, консультация по круизам, договорились на встречу 15.04»")
@@ -2125,7 +2125,7 @@ async def kb_b2b_add(event: MessageCallback):
 @router.message_callback(F.callback.payload == "nav_b2b_find")
 async def kb_b2b_search(event: MessageCallback):
     cb = event.callback; msg = event.message
-    uid = msg.sender.user_id
+    uid = cb.user.user_id
     if not allowed(uid): return
     user_states[uid] = {"table": "b2b", "step": "b2b_search"}
     await msg.answer(text="Напиши имя, контакт или тему:")
@@ -2133,7 +2133,7 @@ async def kb_b2b_search(event: MessageCallback):
 @router.message_callback(F.callback.payload == "nav_b2b_all")
 async def kb_b2b_all(event: MessageCallback):
     cb = event.callback; msg = event.message
-    if not allowed(msg.sender.user_id): return
+    if not allowed(cb.user.user_id): return
     orders = b2b_get_all()
     if not orders:
         await msg.answer(text="Заказов B2B нет.", attachments=[KB_B2B]); return
@@ -2151,7 +2151,7 @@ async def kb_b2b_all(event: MessageCallback):
 @router.message_callback(F.callback.payload == "nav_b2b_complete")
 async def kb_b2b_done(event: MessageCallback):
     cb = event.callback; msg = event.message
-    uid = msg.sender.user_id
+    uid = cb.user.user_id
     if not allowed(uid): return
     user_states[uid] = {"table": "b2b", "step": "b2b_done"}
     await msg.answer(text="Напиши номер или имя контакта чтобы отметить как выполнен:")
@@ -2160,7 +2160,7 @@ async def kb_b2b_done(event: MessageCallback):
 @router.message_callback(F.callback.payload == "nav_useful")
 async def kb_useful(event: MessageCallback):
     cb = event.callback; msg = event.message
-    if not allowed(msg.sender.user_id): return
+    if not allowed(cb.user.user_id): return
     kb = _make_kb([
         [CallbackButton(
             text="🛂 Расшифровка паспорта",
@@ -10016,8 +10016,8 @@ async def _gemini_generate_image(prompt: str) -> bytes | None:
 @router.message_callback(F.callback.payload == "nav_agent")
 async def kb_agent_menu(event: MessageCallback):
     cb = event.callback; msg = event.message
-    if not allowed(msg.sender.user_id): return
-    clear_all_states(msg.sender.user_id)
+    if not allowed(cb.user.user_id): return
+    clear_all_states(cb.user.user_id)
     await msg.answer(
         "<b>🧠 Агент</b>\n\n"
         "📎 <b>Обучить</b> — пришли файл, фото, PDF или текст, и я запомню\n"
@@ -10029,24 +10029,24 @@ async def kb_agent_menu(event: MessageCallback):
 @router.message_callback(F.callback.payload == "nav_agent_train")
 async def agent_learn_start(event: MessageCallback):
     cb = event.callback; msg = event.message
-    if not allowed(msg.sender.user_id): return
-    user_states[msg.sender.user_id] = {"step": "agent_learn"}
+    if not allowed(cb.user.user_id): return
+    user_states[cb.user.user_id] = {"step": "agent_learn"}
     await msg.answer(text="Пришли файл, фото, PDF или напиши текст — изучу и запомню.")
 
 
 @router.message_callback(F.callback.payload == "nav_agent_ask")
 async def agent_ask_start(event: MessageCallback):
     cb = event.callback; msg = event.message
-    if not allowed(msg.sender.user_id): return
-    user_states[msg.sender.user_id] = {"step": "agent_ask"}
+    if not allowed(cb.user.user_id): return
+    user_states[cb.user.user_id] = {"step": "agent_ask"}
     await msg.answer(text="Задай вопрос — отвечу на основе изученных материалов.")
 
 
 @router.message_callback(F.callback.payload == "nav_agent_draw")
 async def agent_draw_start(event: MessageCallback):
     cb = event.callback; msg = event.message
-    if not allowed(msg.sender.user_id): return
-    user_states[msg.sender.user_id] = {"step": "agent_draw"}
+    if not allowed(cb.user.user_id): return
+    user_states[cb.user.user_id] = {"step": "agent_draw"}
     await msg.answer(text="Опиши что нарисовать — сгенерирую картинку.")
 
 
@@ -10220,8 +10220,8 @@ async def _recipe_process_file(msg, uid: int, gemini_parts: list, image_bytes: b
 @router.message_callback(F.callback.payload == "nav_recipes")
 async def kb_recipes_menu(event: MessageCallback):
     cb = event.callback; msg = event.message
-    if not allowed(msg.sender.user_id): return
-    clear_all_states(msg.sender.user_id)
+    if not allowed(cb.user.user_id): return
+    clear_all_states(cb.user.user_id)
     await msg.answer(text="<b>🍳 Рецепты</b>\nДобавляй рецепты из фото, PDF, скриншотов или текста — сохраняю в Notion.",
                      attachments=[KB_RECIPES])
 
@@ -10229,8 +10229,8 @@ async def kb_recipes_menu(event: MessageCallback):
 @router.message_callback(F.callback.payload == "nav_recipe_add")
 async def recipe_add_start(event: MessageCallback):
     cb = event.callback; msg = event.message
-    if not allowed(msg.sender.user_id): return
-    uid = msg.sender.user_id
+    if not allowed(cb.user.user_id): return
+    uid = cb.user.user_id
     user_states[uid] = {"step": "recipe_wait"}
     await msg.answer(text="Пришли фото, скриншот, PDF рецепта или напиши его текстом — распознаю автоматически.")
 
@@ -11205,7 +11205,7 @@ def _periods_kb(show_analyze: bool = False, period: str = "") -> AttachmentButto
 @router.message_callback(F.callback.payload == "nav_finreport")
 async def cmd_profit(event: MessageCallback):
     cb = event.callback; msg = event.message
-    if not allowed(msg.sender.user_id): return
+    if not allowed(cb.user.user_id): return
     p = _period_for("month")
     if not p: return
     start, end, label, prev_start, prev_end, prev_label = p
@@ -11770,15 +11770,15 @@ async def cb_goal_show(event: MessageCallback):
 @router.message_callback(F.callback.payload == "nav_plan")
 async def kb_plan(event: MessageCallback):
     cb = event.callback; msg = event.message
-    if not allowed(msg.sender.user_id): return
-    clear_all_states(msg.sender.user_id)
+    if not allowed(cb.user.user_id): return
+    clear_all_states(cb.user.user_id)
     await msg.answer(text="📈 <b>План на месяц</b>", attachments=[KB_PLAN])
 
 
 @router.message_callback(F.callback.payload == "nav_plan_progress")
 async def kb_plan_progress(event: MessageCallback):
     cb = event.callback; msg = event.message
-    if not allowed(msg.sender.user_id): return
+    if not allowed(cb.user.user_id): return
     try:
         text = plan_progress_text(plan_current_month())
     except Exception as e:
@@ -11789,8 +11789,8 @@ async def kb_plan_progress(event: MessageCallback):
 @router.message_callback(F.callback.payload == "nav_plan_set")
 async def kb_plan_set_start(event: MessageCallback):
     cb = event.callback; msg = event.message
-    if not allowed(msg.sender.user_id): return
-    uid = msg.sender.user_id
+    if not allowed(cb.user.user_id): return
+    uid = cb.user.user_id
     user_states[uid] = {"table": "plan", "step": "plan_set_target"}
     label = plan_month_label(plan_current_month())
     await msg.answer(text=f"Введи цель по марже на <b>{label}</b> в рублях:\n<i>Например: 150000</i>")
@@ -11799,8 +11799,8 @@ async def kb_plan_set_start(event: MessageCallback):
 @router.message_callback(F.callback.payload == "nav_plan_deal")
 async def kb_plan_deal_start(event: MessageCallback):
     cb = event.callback; msg = event.message
-    if not allowed(msg.sender.user_id): return
-    uid = msg.sender.user_id
+    if not allowed(cb.user.user_id): return
+    uid = cb.user.user_id
     user_states[uid] = {"table": "plan", "step": "plan_deal_desc"}
     await msg.answer(text="Что за сделка? Напиши коротко:\n<i>Например: Тур в Таиланд, семья Ивановых</i>")
 
@@ -11808,8 +11808,8 @@ async def kb_plan_deal_start(event: MessageCallback):
 @router.message_callback(F.callback.payload == "nav_plan_ideas")
 async def kb_plan_ideas(event: MessageCallback):
     cb = event.callback; msg = event.message
-    if not allowed(msg.sender.user_id): return
-    uid = msg.sender.user_id
+    if not allowed(cb.user.user_id): return
+    uid = cb.user.user_id
     d = plan_get_data(plan_current_month())
     ideas = d["ideas"]
     if not ideas:
