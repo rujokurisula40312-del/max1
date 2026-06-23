@@ -19,20 +19,6 @@ CLAUDE_MODEL = "claude-haiku-4-5-20251001"
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 CLAUDE_API_KEY = os.environ.get("CLAUDE_API_KEY", "")
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
-_GEMINI_KEYS: list[str] = [k for k in [
-    GEMINI_API_KEY,
-    os.environ.get("GEMINI_API_KEY_2", ""),
-    os.environ.get("GEMINI_API_KEY_3", ""),
-] if k]
-_gemini_key_index = 0
-
-def _get_gemini_key() -> str:
-    return _GEMINI_KEYS[_gemini_key_index % len(_GEMINI_KEYS)]
-
-def _rotate_gemini_key():
-    global _gemini_key_index
-    _gemini_key_index += 1
 SPREADSHEET_ID_1 = "16PDYLk1FTYBXQCS55VKr8yq6QWiWIihisHCW8vD6JQo"
 SPREADSHEET_ID_2 = "1paRk3fvQzwVwK7JyO6RIdjIJGrveBfhyMwD4UtkgJ7I"
 ALLOWED_USERS = [7086707589, 469985712]
@@ -1910,7 +1896,7 @@ async def cb_calc_currency(cb):
     )
 
 # -- Поиск круизов --
-GEMINI_MODEL = "gemini-2.5-flash"
+
 
 _RU_MONTHS = {
     "январ": 1, "феврал": 2, "март": 3, "апрел": 4, "ма": 5, "июн": 6,
@@ -1974,40 +1960,30 @@ async def _fetch_cruise_links(site_url: str) -> tuple[str, str]:
     page_text = re.sub(r'\s+', ' ', page_text).strip()[:6000]
     return "\n".join(links), page_text
 
-async def _gemini_post(payload: dict, timeout: int = 60) -> dict:
-    """POST к Gemini API с автоматической ротацией ключей при исчерпании квоты."""
-    import aiohttp as _ah
-    last_err = None
-    for _ in range(len(_GEMINI_KEYS)):
-        key = _get_gemini_key()
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={key}"
-        async with _ah.ClientSession() as session:
-            async with session.post(url, json=payload, timeout=_ah.ClientTimeout(total=timeout)) as resp:
-                data = await resp.json()
-        err = data.get("error", {})
-        if err:
-            msg = err.get("message", "")
-            if "quota" in msg.lower() or err.get("code") in (429, 403):
-                _rotate_gemini_key()
-                last_err = RuntimeError(f"{err.get('code')}: {msg[:120]}")
-                continue
-            raise RuntimeError(f"{err.get('code')}: {msg[:120]}")
-        return data
-    raise last_err or RuntimeError("All Gemini API keys exhausted")
+
+async def _claude_generate(prompt: str, max_tokens: int = 2500) -> str:
+    """Генерирует текст через Claude."""
+    resp = await asyncio.to_thread(
+        claude.messages.create,
+        model=CLAUDE_MODEL,
+        max_tokens=max_tokens,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    return resp.content[0].text.strip()
 
 
-async def _gemini_generate(prompt: str, max_tokens: int = 2500) -> str:
-    payload = {
-        "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {
-            "maxOutputTokens": max_tokens,
-            "temperature": 0.2,
-            "thinkingConfig": {"thinkingBudget": 0},
-        },
-    }
-    data = await _gemini_post(payload)
-    parts = data.get("candidates", [{}])[0].get("content", {}).get("parts", [])
-    return "".join(p.get("text", "") for p in parts).strip()
+async def _claude_generate_with_image(prompt: str, image_b64: str, mime: str = "image/jpeg", max_tokens: int = 4000) -> str:
+    """Генерирует текст через Claude с изображением."""
+    resp = await asyncio.to_thread(
+        claude.messages.create,
+        model=CLAUDE_MODEL,
+        max_tokens=max_tokens,
+        messages=[{"role": "user", "content": [
+            {"type": "image", "source": {"type": "base64", "media_type": mime, "data": image_b64}},
+            {"type": "text", "text": prompt},
+        ]}],
+    )
+    return resp.content[0].text.strip()
 
 _SITE_FALLBACK_URLS = {
     "lavoyage.ru":  ("Ла Вояж",   "https://lavoyage.ru/sea_cruise/cruises/"),
@@ -2029,37 +2005,40 @@ def _clean_cruise_text(text: str) -> str:
 
 
 async def search_all_cruises(query: str) -> str:
-    """Один запрос Gemini на все три ТО — экономит квоту, ищет через Google Search."""
-    import aiohttp as _ah
+    """Ищет круизы: скачивает страницы ТО и анализирует через Claude."""
+    date = _extract_start_date(query)
+    urls = _cruise_search_urls(date)
+    import asyncio as _asyncio
+    async def fetch_one(name, url):
+        try:
+            links, page_text = await _fetch_cruise_links(url)
+            return name, links, page_text, url
+        except Exception as e:
+            return name, "", f"Ошибка загрузки: {e}", url
+
+    results = await _asyncio.gather(*[fetch_one(n, u) for n, u in urls.items()])
+
+    context_parts = []
+    for name, links, page_text, url in results:
+        context_parts.append(
+            f"=== {name} ({url}) ===\n"
+            f"Ссылки на круизы:\n{links or 'нет'}\n\n"
+            f"Текст страницы:\n{page_text[:3000]}"
+        )
+    context = "\n\n".join(context_parts)
+
     prompt = (
-        f"Найди круизы по запросу «{query}» на сайтах lavoyage.ru, pac.ru, cruclub.ru.\n"
-        f"Раздели результаты по сайтам. Для каждого круиза: лайнер, маршрут, дата, цена.\n"
-        f"Если есть прямая ссылка на круиз — добавь её. "
-        f"Если на сайте не найдено — напиши 'не найдено'. Без вступлений."
+        f"Проанализируй информацию о круизах с сайтов туроператоров.\n"
+        f"Запрос пользователя: «{query}»\n\n"
+        f"{context}\n\n"
+        f"Раздели результаты по туроператорам. Для каждого подходящего круиза: лайнер, маршрут, дата, цена (если есть), ссылка.\n"
+        f"Если на сайте не нашлось подходящих — напиши «не найдено».\n"
+        f"Без вступлений и лишних слов."
     )
-    payload = {
-        "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {
-            "maxOutputTokens": 1800,
-            "temperature": 0.1,
-            "thinkingConfig": {"thinkingBudget": 0},
-        },
-        "tools": [{"google_search": {}}],
-    }
-    api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={_get_gemini_key()}"
     try:
-        async with _ah.ClientSession() as session:
-            async with session.post(api_url, json=payload, timeout=_ah.ClientTimeout(total=50)) as resp:
-                data = await resp.json()
-        if data.get("error"):
-            err_msg = data['error'].get('message','')
-            if "quota" in err_msg.lower():
-                _rotate_gemini_key()
-            return f"Ошибка поиска: {err_msg[:150]}"
-        parts = data.get("candidates", [{}])[0].get("content", {}).get("parts", [])
-        text = "".join(p.get("text", "") for p in parts).strip()
+        text = await _claude_generate(prompt, max_tokens=1800)
     except Exception as e:
-        logger.error(f"search_all_cruises: {e}")
+        logger.error(f"search_all_cruises claude: {e}")
         return f"Ошибка поиска: {str(e)[:120]}"
     if not text:
         return "Ничего не найдено."
@@ -2749,8 +2728,7 @@ async def handle_photo(event: MessageCreated):
         if not draft:
             await msg.answer(text="Сессия пересоздания потеряна."); user_states.pop(uid, None); return
         try:
-            f = await bot.get_file(msg.photo[-1].file_id)
-            d = (await bot.download_file(f.file_path)).read()
+            d = await _download_attachment_bytes(msg)
             caption = (msg.caption or "").strip()
             plan_item = draft["plan"][draft["cursor"]]
             text = caption or plan_item.get("text", "")
@@ -2769,9 +2747,8 @@ async def handle_photo(event: MessageCreated):
             draft = {"title": "Без названия", "steps": []}
             instructions_draft[uid] = draft
         try:
-            f = await bot.get_file(msg.photo[-1].file_id)
-            d = (await bot.download_file(f.file_path)).read()
-            tg_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{f.file_path}"
+            d = await _download_attachment_bytes(msg)
+            tg_url = ""
             caption = (msg.caption or "").strip()
             draft["steps"].append({"text": caption, "photo_bytes": d, "tg_url": tg_url})
             kb = _make_kb([
@@ -2788,8 +2765,7 @@ async def handle_photo(event: MessageCreated):
     # Агент — обучение на фото
     if uid in user_states and user_states[uid].get("step") == "agent_learn":
         try:
-            f = await bot.get_file(msg.photo[-1].file_id)
-            d = (await bot.download_file(f.file_path)).read()
+            d = await _download_attachment_bytes(msg)
             b64 = base64.b64encode(d).decode()
             caption = (msg.caption or "").strip()
             parts = [{"inline_data": {"mime_type": "image/jpeg", "data": b64}}]
@@ -2804,8 +2780,7 @@ async def handle_photo(event: MessageCreated):
     # Рецепты — принимаем фото
     if uid in user_states and user_states[uid].get("step") == "recipe_wait":
         try:
-            f = await bot.get_file(msg.photo[-1].file_id)
-            d = (await bot.download_file(f.file_path)).read()
+            d = await _download_attachment_bytes(msg)
             b64 = base64.b64encode(d).decode()
             gemini_parts = [{"inline_data": {"mime_type": "image/jpeg", "data": b64}}]
             await _recipe_process_file(msg, uid, gemini_parts, image_bytes=d)
@@ -2820,8 +2795,7 @@ async def handle_photo(event: MessageCreated):
         else:
             w = await msg.answer(text="Распознаю...")
             try:
-                f = await bot.get_file(msg.photo[-1].file_id)
-                d = (await bot.download_file(f.file_path)).read()
+                d = await _download_attachment_bytes(msg)
                 b64 = base64.b64encode(d).decode()
                 r = claude.messages.create(model=CLAUDE_MODEL, max_tokens=200,
                     system="""Определи что на скриншоте из русскоязычного приложения (фильм, сериал, песня, книга, бренд, товар).
@@ -2850,8 +2824,7 @@ async def handle_photo(event: MessageCreated):
     if uid in cal_states and cal_states[uid].get("step") == "calendar_input":
         w = await msg.answer(text="Распознаю...")
         try:
-            f = await bot.get_file(msg.photo[-1].file_id)
-            d = (await bot.download_file(f.file_path)).read()
+            d = await _download_attachment_bytes(msg)
             b64 = base64.b64encode(d).decode()
             from calendar_module import handle_calendar_text as _hct
             r = claude.messages.create(model=CLAUDE_MODEL, max_tokens=1000,
@@ -2893,8 +2866,7 @@ async def handle_photo(event: MessageCreated):
         return await msg.answer(text="Выбери действие с помощью кнопок внизу или /start")
     table = user_states[uid].get("table")
     w = await msg.answer(text="Получил фото...")
-    f = await bot.get_file(msg.photo[-1].file_id)
-    d = (await bot.download_file(f.file_path)).read()
+    d = await _download_attachment_bytes(msg)
     doc_entry = {"type":"image","media_type":"image/jpeg","data":base64.b64encode(d).decode()}
     if table == "guides":
         if uid not in guide_docs: guide_docs[uid] = []
@@ -2922,8 +2894,7 @@ async def handle_video(event: MessageCreated):
             await msg.answer(text="Сессия пересоздания потеряна."); user_states.pop(uid, None); return
         vid = msg.video or msg.video_note or msg.animation
         try:
-            f = await bot.get_file(vid.file_id)
-            d = (await bot.download_file(f.file_path)).read()
+            d = await _download_attachment_bytes(msg)
             caption = (msg.caption or "").strip()
             plan_item = draft["plan"][draft["cursor"]]
             text = caption or plan_item.get("text", "")
@@ -2947,8 +2918,7 @@ async def handle_video(event: MessageCreated):
             instructions_draft[uid] = draft
         vid = msg.video or msg.video_note or msg.animation
         try:
-            f = await bot.get_file(vid.file_id)
-            d = (await bot.download_file(f.file_path)).read()
+            d = await _download_attachment_bytes(msg)
             caption = (msg.caption or "").strip()
             draft["steps"].append({"text": caption, "video_bytes": d})
             kb = _make_kb([
@@ -2990,8 +2960,7 @@ async def handle_doc(event: MessageCreated):
         mime = doc.mime_type or ""
         if mime == "application/pdf" or mime.startswith("image/") or mime == "text/plain":
             try:
-                f = await bot.get_file(doc.file_id)
-                d = (await bot.download_file(f.file_path)).read()
+                d = await _download_attachment_bytes(msg)
                 b64 = base64.b64encode(d).decode()
                 if mime == "text/plain":
                     text_content = d.decode("utf-8", errors="ignore")
@@ -3016,8 +2985,7 @@ async def handle_doc(event: MessageCreated):
         mime = doc.mime_type or ""
         if mime == "application/pdf" or mime.startswith("image/"):
             try:
-                f = await bot.get_file(doc.file_id)
-                d = (await bot.download_file(f.file_path)).read()
+                d = await _download_attachment_bytes(msg)
                 b64 = base64.b64encode(d).decode()
                 if mime == "application/pdf":
                     gemini_parts = [{"inline_data": {"mime_type": "application/pdf", "data": b64}}]
@@ -3038,8 +3006,7 @@ async def handle_doc(event: MessageCreated):
         if doc.mime_type == "application/pdf":
             w = await msg.answer(text="Распознаю PDF...")
             try:
-                f = await bot.get_file(doc.file_id)
-                d = (await bot.download_file(f.file_path)).read()
+                d = await _download_attachment_bytes(msg)
                 b64 = base64.b64encode(d).decode()
                 from calendar_module import handle_calendar_text as _hct
                 r = claude.messages.create(model=CLAUDE_MODEL, max_tokens=1000,
@@ -3081,8 +3048,7 @@ async def handle_doc(event: MessageCreated):
     if table == "tourists" and doc.file_name and any(doc.file_name.endswith(ext) for ext in (".txt", ".html", ".json")):
         w = await msg.answer(text="Читаю экспорт чата...")
         try:
-            f = await bot.get_file(doc.file_id)
-            d = (await bot.download_file(f.file_path)).read()
+            d = await _download_attachment_bytes(msg)
             text_content = d.decode("utf-8", errors="ignore")
             await w.delete()
             await tourist_analyze_chat_export(msg, uid, text_content)
@@ -3094,8 +3060,7 @@ async def handle_doc(event: MessageCreated):
     if doc.mime_type not in ("application/pdf","image/jpeg","image/png"):
         return await msg.answer(text="Поддерживаются: PDF, JPEG, PNG, TXT")
     w = await msg.answer(text="Получил документ...")
-    f = await bot.get_file(doc.file_id)
-    d = (await bot.download_file(f.file_path)).read()
+    d = await _download_attachment_bytes(msg)
     bt = "document" if doc.mime_type == "application/pdf" else "image"
     doc_entry = {"type":bt,"media_type":doc.mime_type,"data":base64.b64encode(d).decode()}
     if table == "guides":
@@ -3873,8 +3838,7 @@ def _sber_async_recognize_sync(voice_data: bytes, token: str) -> str:
 async def _transcribe_voice(msg) -> str:
     """Распознаёт голосовое через Сбер SaluteSpeech.
     Короткое (≤~1 мин) — sync; длинное — async-пайплайн."""
-    f = await bot.get_file(msg.voice.file_id)
-    voice_data = (await bot.download_file(f.file_path)).read()
+    voice_data = await _download_attachment_bytes(msg)
     token = await _sber_get_access_token()
     duration = getattr(msg.voice, "duration", 0) or 0
     if duration > 55:
@@ -6698,7 +6662,6 @@ try:
         owner_id=NUTRITION_OWNER_USER_ID,
         spreadsheet_id=SPREADSHEET_ID_1,
         model=CLAUDE_MODEL,
-        gemini_key=GEMINI_API_KEY,
     )
     dp.include_router(warmup_module.warmup_router)
     logger.info("Warmup module loaded")
@@ -9812,7 +9775,6 @@ async def b2b_complete(msg, query):
 
 # ==================== АГЕНТ: ФУНКЦИИ ====================
 
-GEMINI_IMAGE_MODEL = "imagen-3.0-generate-002"
 
 KB_AGENT = _make_kb([
     [CallbackButton(text="📎 Обучить", payload="nav_agent_train"), CallbackButton(text="❓ Спросить", payload="nav_agent_ask")],
@@ -9822,7 +9784,7 @@ KB_AGENT = _make_kb([
 
 
 async def _gemini_extract_knowledge(parts: list) -> dict:
-    """Извлекает структурированные знания из документа/фото/текста."""
+    """Извлекает структурированные знания из документа/фото/текста через Claude."""
     prompt = (
         "Извлеки знания из этого материала. Верни ТОЛЬКО JSON без markdown:\n"
         '{"title":"Краткое название (до 80 символов)",'
@@ -9831,16 +9793,24 @@ async def _gemini_extract_knowledge(parts: list) -> dict:
         '"tags":["тег1","тег2","тег3"]}\n'
         "Теги — ключевые слова по теме. Пиши по-русски."
     )
-    payload = {
-        "contents": [{"parts": parts + [{"text": prompt}]}],
-        "generationConfig": {"maxOutputTokens": 8000, "temperature": 0.1,
-                             "thinkingConfig": {"thinkingBudget": 0}},
-    }
-    data = await _gemini_post(payload, timeout=120)
-    if data.get("error"):
-        raise RuntimeError(data["error"].get("message", "")[:150])
-    resp_parts = data.get("candidates", [{}])[0].get("content", {}).get("parts", [])
-    raw = "".join(p.get("text", "") for p in resp_parts).strip()
+    # parts — список dict с image или text. Конвертируем в Claude-формат.
+    claude_content = []
+    for p in parts:
+        if "inline_data" in p:
+            d = p["inline_data"]
+            claude_content.append({"type": "image", "source": {
+                "type": "base64", "media_type": d["mime_type"], "data": d["data"],
+            }})
+        elif "text" in p:
+            claude_content.append({"type": "text", "text": p["text"]})
+    claude_content.append({"type": "text", "text": prompt})
+
+    resp = await asyncio.to_thread(
+        claude.messages.create,
+        model=CLAUDE_MODEL, max_tokens=8000,
+        messages=[{"role": "user", "content": claude_content}],
+    )
+    raw = resp.content[0].text.strip()
     if raw.startswith("```"):
         raw = raw.split("\n", 1)[1] if "\n" in raw else raw[3:]
         raw = raw.rsplit("```", 1)[0].strip()
@@ -9848,25 +9818,17 @@ async def _gemini_extract_knowledge(parts: list) -> dict:
 
 
 async def _gemini_answer(question: str, context: str) -> str:
-    """Отвечает на вопрос с опорой на контекст из базы знаний."""
+    """Отвечает на вопрос с опорой на контекст из базы знаний через Claude."""
     prompt = (
         f"Ты — умный помощник. Отвечай ТОЛЬКО на основе предоставленного контекста.\n"
         f"Если в контексте нет ответа — скажи об этом честно.\n"
-        f"Пиши простым текстом без markdown-разметки: без звёздочек, без решёток, без подчёркиваний.\n"
-        f"Для списков используй тире (—) или цифры. Для выделения — заглавные буквы или двоеточие.\n\n"
+        f"Пиши простым текстом без markdown-разметки: без звёздочек, без решёток.\n"
+        f"Для списков используй тире (—) или цифры.\n\n"
         f"=== КОНТЕКСТ ИЗ БАЗЫ ЗНАНИЙ ===\n{context}\n\n"
         f"=== ВОПРОС ===\n{question}\n\n"
         f"Ответ (по-русски, развёрнуто):"
     )
-    payload = {
-        "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"maxOutputTokens": 2000, "temperature": 0.2,
-                             "thinkingConfig": {"thinkingBudget": 0}},
-    }
-    data = await _gemini_post(payload)
-    resp_parts = data.get("candidates", [{}])[0].get("content", {}).get("parts", [])
-    text = "".join(p.get("text", "") for p in resp_parts).strip()
-    # Убираем markdown-разметку
+    text = await _claude_generate(prompt, max_tokens=2000)
     text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
     text = re.sub(r'\*(.+?)\*', r'\1', text)
     text = re.sub(r'^#{1,4}\s+', '', text, flags=re.MULTILINE)
@@ -10054,36 +10016,8 @@ async def _agent_answer_question(msg, uid: int, question: str):
 
 
 async def _gemini_generate_image(prompt: str) -> bytes | None:
-    """Генерирует изображение через Gemini 2.0 Flash native image generation."""
-    import aiohttp as _ah
-    import base64
-    payload = {
-        "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"responseModalities": ["IMAGE", "TEXT"]},
-    }
-    # Image generation uses a specific model — try all keys manually
-    last_err = None
-    for _ in range(len(_GEMINI_KEYS)):
-        key = _get_gemini_key()
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key={key}"
-        async with _ah.ClientSession() as session:
-            async with session.post(url, json=payload,
-                                    timeout=_ah.ClientTimeout(total=120)) as resp:
-                data = await resp.json()
-        err = data.get("error", {})
-        if err:
-            msg = err.get("message", "")
-            if "quota" in msg.lower() or err.get("code") in (429, 403):
-                _rotate_gemini_key()
-                last_err = RuntimeError(f"{err.get('code')}: {msg[:120]}")
-                continue
-            raise RuntimeError(f"{err.get('code')}: {msg[:120]}")
-        for candidate in data.get("candidates", []):
-            for part in candidate.get("content", {}).get("parts", []):
-                if "inlineData" in part:
-                    return base64.b64decode(part["inlineData"]["data"])
-        raise RuntimeError("No image in response")
-    raise last_err or RuntimeError("All Gemini API keys exhausted")
+    """Генерация изображений не поддерживается — функция отключена."""
+    raise NotImplementedError("Генерация изображений недоступна.")
 
 
 # ==================== АГЕНТ: ОБРАБОТЧИКИ ====================
@@ -10128,22 +10062,30 @@ async def agent_draw_start(event: MessageCallback):
 # ==================== РЕЦЕПТЫ: ФУНКЦИИ ====================
 
 async def _gemini_extract_recipe(parts: list) -> dict:
-    """Извлекает структурированный рецепт из изображения/PDF/текста через Gemini."""
-    import aiohttp as _ah
+    """Извлекает структурированный рецепт из изображения/PDF/текста через Claude."""
     prompt = (
         "Извлеки рецепт из этого материала. Верни ТОЛЬКО JSON без markdown-блоков:\n"
         '{"title":"Название","ingredients":["ингредиент 1",...],"steps":["Шаг 1",...],'
         '"servings":"порции или null","time":"время или null"}\n'
         'Если это не рецепт — верни {"error":"Не рецепт"}.'
     )
-    payload = {
-        "contents": [{"parts": parts + [{"text": prompt}]}],
-        "generationConfig": {"maxOutputTokens": 4000, "temperature": 0.1,
-                             "thinkingConfig": {"thinkingBudget": 0}},
-    }
-    data = await _gemini_post(payload, timeout=90)
-    resp_parts = data.get("candidates", [{}])[0].get("content", {}).get("parts", [])
-    raw = "".join(p.get("text", "") for p in resp_parts).strip()
+    claude_content = []
+    for p in parts:
+        if "inline_data" in p:
+            d = p["inline_data"]
+            claude_content.append({"type": "image", "source": {
+                "type": "base64", "media_type": d["mime_type"], "data": d["data"],
+            }})
+        elif "text" in p:
+            claude_content.append({"type": "text", "text": p["text"]})
+    claude_content.append({"type": "text", "text": prompt})
+
+    resp = await asyncio.to_thread(
+        claude.messages.create,
+        model=CLAUDE_MODEL, max_tokens=4000,
+        messages=[{"role": "user", "content": claude_content}],
+    )
+    raw = resp.content[0].text.strip()
     if raw.startswith("```"):
         raw = raw.split("\n", 1)[1] if "\n" in raw else raw[3:]
         raw = raw.rsplit("```", 1)[0].strip()
@@ -12048,7 +11990,7 @@ async def reflection_handle_text(event: MessageCreated):
     try:
         try:
             summary = await asyncio.wait_for(
-                _gemini_generate(f"Сделай краткое резюме (1 предложение, до 80 символов) для этой записи рефлексии:\n\n{text[:500]}"),
+                _claude_generate(f"Сделай краткое резюме (1 предложение, до 80 символов) для этой записи рефлексии:\n\n{text[:500]}"),
                 timeout=20
             )
         except Exception:
@@ -12069,26 +12011,20 @@ async def reflection_handle_photo(event: MessageCreated):
     uid = msg.sender.user_id
     w = await msg.answer(text="🔍 Читаю скриншот...")
     try:
-        f = await bot.get_file(msg.photo[-1].file_id)
-        data = (await bot.download_file(f.file_path)).read()
         import base64 as _b64
+        data = await _download_attachment_bytes(msg)
+        if not data:
+            await w.message.edit(text="❌ Не удалось загрузить изображение.")
+            return
         b64 = _b64.b64encode(data).decode()
-        parts = [
-            {"inline_data": {"mime_type": "image/jpeg", "data": b64}},
-            {"text": "Опиши что на этом скриншоте/изображении. Это запись рефлексии — извлеки основной смысл и мысли. Ответь по-русски."}
-        ]
-        payload = {
-            "contents": [{"parts": parts}],
-            "generationConfig": {"maxOutputTokens": 1500, "temperature": 0.2,
-                                 "thinkingConfig": {"thinkingBudget": 0}},
-        }
-        resp_data = await _gemini_post(payload, timeout=60)
-        resp_parts = resp_data.get("candidates", [{}])[0].get("content", {}).get("parts", [])
-        content = "".join(p.get("text", "") for p in resp_parts).strip()
-        caption = (msg.caption or "").strip()
+        content = await _claude_generate_with_image(
+            "Опиши что на этом скриншоте/изображении. Это запись рефлексии — извлеки основной смысл и мысли. Ответь по-русски.",
+            b64, max_tokens=1500,
+        )
+        caption = ((msg.body.text or "") if msg.body else "").strip()
         if caption:
             content = f"{caption}\n\n{content}"
-        summary = await _gemini_generate(
+        summary = await _claude_generate(
             f"Краткое резюме (1 предложение, до 80 символов):\n\n{content[:500]}"
         )
         url = await asyncio.to_thread(_save_reflection_sync, content, "photo", summary)
@@ -12109,7 +12045,7 @@ async def reflection_handle_voice(event: MessageCreated):
         await w.message.edit(text="💭 Сохраняю...")
         try:
             summary = await asyncio.wait_for(
-                _gemini_generate(f"Сделай краткое резюме (1 предложение, до 80 символов) для этой голосовой заметки:\n\n{transcript[:500]}"),
+                _claude_generate(f"Сделай краткое резюме (1 предложение, до 80 символов) для этой голосовой заметки:\n\n{transcript[:500]}"),
                 timeout=20
             )
         except Exception:
@@ -12163,7 +12099,7 @@ async def reflection_summary(event: MessageCreated):
             f"что важно для роста. Задай 2-3 мощных коучинговых вопроса для дальнейшего исследования. "
             f"Пиши тепло, честно, конкретно. Без markdown-разметки."
         )
-        analysis = await asyncio.wait_for(_gemini_generate(prompt, max_tokens=2000), timeout=60)
+        analysis = await asyncio.wait_for(_claude_generate(prompt, max_tokens=2000), timeout=60)
     except asyncio.TimeoutError:
         await w.message.edit(text="❌ Gemini не ответил вовремя. Попробуй ещё раз через минуту.")
         return

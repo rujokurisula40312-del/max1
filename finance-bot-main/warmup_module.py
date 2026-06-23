@@ -48,8 +48,6 @@ _bot = None
 _owner_id: int = 0
 _spreadsheet_id: str = ""
 _model: str = "claude-haiku-4-5-20251001"
-_gemini_key: str = ""
-_gemini_model: str = "gemini-2.5-flash"
 
 warmup_states: dict[int, dict] = {}
 
@@ -58,10 +56,9 @@ SHEET_WARMUP_DAYS = "Прогрев_дни"
 
 
 def init_warmup(claude, gc, bot, owner_id: int, spreadsheet_id: str, model: str, gemini_key: str = ""):
-    global _claude, _gc, _bot, _owner_id, _spreadsheet_id, _model, _gemini_key
+    global _claude, _gc, _bot, _owner_id, _spreadsheet_id, _model
     _claude = claude; _gc = gc; _bot = bot
     _owner_id = owner_id; _spreadsheet_id = spreadsheet_id; _model = model
-    _gemini_key = gemini_key
     _ensure_sheets()
     logger.info(f"warmup_module: init (owner={owner_id})")
 
@@ -224,36 +221,24 @@ def _parse_stats_images(images_bytes: list[bytes], subscribers: int = 0) -> dict
 
 Лайки и репосты в "по_датам" — это СУММА соответствующих полей из "посты" для той же даты."""
 
-    async def _call_gemini():
-        parts = []
+    def _call_claude():
+        content = []
         for img in images_bytes:
-            parts.append({
-                "inline_data": {
-                    "mime_type": "image/jpeg",
-                    "data": base64.standard_b64encode(img).decode()
-                }
-            })
-        parts.append({"text": prompt_text})
-        payload = {
-            "contents": [{"parts": parts}],
-            "generationConfig": {"maxOutputTokens": 4000, "temperature": 0.1}
-        }
-        url = (f"https://generativelanguage.googleapis.com/v1beta/models/"
-               f"{_gemini_model}:generateContent?key={_gemini_key}")
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=payload,
-                                    timeout=aiohttp.ClientTimeout(total=90)) as resp:
-                data = await resp.json()
-        if data.get("error"):
-            raise RuntimeError(f"Gemini error: {data['error'].get('message','')[:200]}")
-        candidates = data.get("candidates", [{}])
-        return "".join(
-            p.get("text", "")
-            for p in candidates[0].get("content", {}).get("parts", [])
-        ).strip()
+            content.append({"type": "image", "source": {
+                "type": "base64",
+                "media_type": "image/jpeg",
+                "data": base64.standard_b64encode(img).decode(),
+            }})
+        content.append({"type": "text", "text": prompt_text})
+        resp = _claude.messages.create(
+            model=_model,
+            max_tokens=4000,
+            messages=[{"role": "user", "content": content}],
+        )
+        return resp.content[0].text.strip()
 
-    # Функция вызывается через asyncio.to_thread — новый поток, нет event loop
-    text = asyncio.run(_call_gemini())
+    # Вызывается через asyncio.to_thread — синхронный вызов Claude
+    text = _call_claude()
     m = re.search(r'\{[\s\S]+\}', text)
     if not m:
         raise ValueError(f"JSON не найден: {text[:300]}")
