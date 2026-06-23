@@ -4889,7 +4889,7 @@ async def handle_input(event: MessageCreated):
         try:
             img_bytes = await _gemini_generate_image(text)
             if img_bytes:
-                await msg.answer(text=" ", attachments=[InputMediaBuffer(buffer=img_bytes, filename="image.png")])
+                await msg.answer(text=" ", attachments=[InputMediaBuffer(buffer=img_bytes, filename="image.png", type="image")])
                 await w.delete()
             else:
                 await w.message.edit(text="❌ Не удалось сгенерировать изображение. Попробуй другой запрос.")
@@ -8252,7 +8252,7 @@ async def _send_expense_totals(message: Message, label: str, exps: list, trip_id
     try:
         png = await asyncio.to_thread(_render_trip_pie_png, by_cat, label, total_rub)
         if png:
-            await message.answer(text=" ", attachments=[InputMediaBuffer(buffer=png, filename="trip_expenses.png")])
+            await message.answer(text=" ", attachments=[InputMediaBuffer(buffer=png, filename="trip_expenses.png", type="image")])
     except Exception as e:
         logger.warning(f"Trip pie chart: {e}")
 
@@ -11327,7 +11327,7 @@ async def cb_report_period(event: MessageCallback):
             title = "По месяцам" if by == "month" else "По кварталам"
             await msg.answer(
                 text=f"📊 {title} · {datetime.date.today().year}",
-                attachments=[InputMediaBuffer(buffer=png, filename="breakdown.png")]
+                attachments=[InputMediaBuffer(buffer=png, filename="breakdown.png", type="image")]
             )
         except Exception as e:
             logger.error(f"Breakdown PNG error: {e}")
@@ -11712,7 +11712,7 @@ async def cb_dashboard(event: MessageCallback):
         png, caption = await asyncio.to_thread(_generate_dashboard_png)
         await msg.answer(
             text=caption,
-            attachments=[InputMediaBuffer(buffer=png, filename="dashboard.png")]
+            attachments=[InputMediaBuffer(buffer=png, filename="dashboard.png", type="image")]
         )
     except Exception as e:
         logger.error(f"Dashboard error: {e}")
