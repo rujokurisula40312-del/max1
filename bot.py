@@ -952,7 +952,7 @@ async def cb_reset(event: MessageCallback):
     cb = event.callback
     msg = event.message
     clear_all_states(cb.user.user_id)
-    await msg.answer(text="🏠 Главное меню:", attachments=[KB_MAIN]); await event.bot.send_callback(cb.callback_id)
+    await msg.answer(text="🏠 Главное меню:", attachments=[KB_MAIN]); await event.bot.send_callback(cb.callback_id, notification=" ")
 
 @router.message_created(F.message.body.text == "/start")
 async def cmd_start(event: MessageCreated):
@@ -1666,7 +1666,7 @@ async def kb_recreate_list(event: MessageCallback):
 @router.message_callback(F.payload.startswith("recr_pg_"))
 async def cb_recreate_page(cb):
     uid = cb.user.user_id
-    if not allowed(uid): await event.bot.send_callback(cb.callback_id); return
+    if not allowed(uid): await event.bot.send_callback(cb.callback_id, notification=" "); return
     offset = int(cb.payload[8:])
     try:
         pages = _fetch_instruction_pages()
@@ -1679,22 +1679,22 @@ async def cb_recreate_page(cb):
         )
     except Exception as e:
         logger.error(f"Recreate page nav: {e}")
-        await event.bot.send_callback(cb.callback_id)
-    await event.bot.send_callback(cb.callback_id)
+        await event.bot.send_callback(cb.callback_id, notification=" ")
+    await event.bot.send_callback(cb.callback_id, notification=" ")
 
 
 @router.message_callback(F.payload.startswith("recr_"))
 async def cb_recreate(cb):
     uid = cb.user.user_id
-    if not allowed(uid): await event.bot.send_callback(cb.callback_id); return
+    if not allowed(uid): await event.bot.send_callback(cb.callback_id, notification=" "); return
     suffix = cb.payload[5:]
 
     if suffix.startswith("pg_"):
-        await event.bot.send_callback(cb.callback_id); return
+        await event.bot.send_callback(cb.callback_id, notification=" "); return
 
     if suffix == "arch_yes":
         d = recreate_drafts.pop(uid, None)
-        if not d: await event.bot.send_callback(cb.callback_id); return
+        if not d: await event.bot.send_callback(cb.callback_id, notification=" "); return
         try:
             await asyncio.to_thread(_notion_archive_page, d["old_page_id"])
             try: await msg.edit(attachments=[None])
@@ -1703,38 +1703,38 @@ async def cb_recreate(cb):
         except Exception as e:
             logger.error(f"recreate archive: {e}")
             await msg.answer(text=f"Не получилось архивировать: {str(e)[:120]}", attachments=[KB_INSTRUCTIONS])
-        await event.bot.send_callback(cb.callback_id); return
+        await event.bot.send_callback(cb.callback_id, notification=" "); return
 
     if suffix == "arch_no":
         recreate_drafts.pop(uid, None)
         try: await msg.edit(attachments=[None])
         except Exception: pass
         await msg.answer(text="↩ Старая страница оставлена как есть.", attachments=[KB_INSTRUCTIONS])
-        await event.bot.send_callback(cb.callback_id); return
+        await event.bot.send_callback(cb.callback_id, notification=" "); return
 
     if suffix == "cancel":
         recreate_drafts.pop(uid, None); user_states.pop(uid, None)
         await msg.answer(text="Пересоздание отменено.", attachments=[KB_INSTRUCTIONS])
-        await event.bot.send_callback(cb.callback_id); return
+        await event.bot.send_callback(cb.callback_id, notification=" "); return
 
     draft = recreate_drafts.get(uid)
     if suffix == "edit":
-        if not draft: await event.bot.send_callback(cb.callback_id); return
+        if not draft: await event.bot.send_callback(cb.callback_id, notification=" "); return
         user_states[uid] = {"table": "instructions", "step": "recreate_edit_text"}
         await msg.answer(text="Пришли новый текст для этого шага одним сообщением:")
-        await event.bot.send_callback(cb.callback_id); return
+        await event.bot.send_callback(cb.callback_id, notification=" "); return
 
     if suffix == "skip":
-        if not draft: await event.bot.send_callback(cb.callback_id); return
+        if not draft: await event.bot.send_callback(cb.callback_id, notification=" "); return
         plan_item = draft["plan"][draft["cursor"]]
         draft["steps"].append({"text": plan_item.get("text", "")})
         draft["cursor"] += 1
         await _recreate_advance(cb.message, uid)
-        await event.bot.send_callback(cb.callback_id); return
+        await event.bot.send_callback(cb.callback_id, notification=" "); return
 
     # Иначе суффикс — id страницы, запуск нового пересоздания
     page_id = suffix
-    await event.bot.send_callback(cb.callback_id)
+    await event.bot.send_callback(cb.callback_id, notification=" ")
     try:
         blocks = await asyncio.to_thread(_notion_fetch_children, page_id)
         kind, title, plan = _notion_parse_page(blocks)
@@ -1863,11 +1863,11 @@ async def kb_calc_start(event: MessageCallback):
 @router.message_callback(F.payload.startswith("calc_op_"))
 async def cb_calc_operator(cb):
     uid = cb.user.user_id
-    if not allowed(uid): await event.bot.send_callback(cb.callback_id); return
+    if not allowed(uid): await event.bot.send_callback(cb.callback_id, notification=" "); return
     op = cb.payload[8:]
     if op not in CALC_OPERATORS:
-        await event.bot.send_callback(cb.callback_id); return
-    await event.bot.send_callback(cb.callback_id)
+        await event.bot.send_callback(cb.callback_id, notification=" "); return
+    await event.bot.send_callback(cb.callback_id, notification=" ")
     wait = await msg.answer(text=f"⏳ Загружаю курс {op}…")
     rate_text = await CALC_OPERATORS[op]()
     usd, eur = _parse_rates_from_text(rate_text)
@@ -1886,12 +1886,12 @@ async def cb_calc_operator(cb):
 @router.message_callback(F.payload.startswith("calc_cur_"))
 async def cb_calc_currency(cb):
     uid = cb.user.user_id
-    if not allowed(uid): await event.bot.send_callback(cb.callback_id); return
+    if not allowed(uid): await event.bot.send_callback(cb.callback_id, notification=" "); return
     cur = cb.payload[9:]  # USD или EUR
     draft = calc_drafts.get(uid)
     if not draft:
-        await event.bot.send_callback(cb.callback_id); return
-    await event.bot.send_callback(cb.callback_id)
+        await event.bot.send_callback(cb.callback_id, notification=" "); return
+    await event.bot.send_callback(cb.callback_id, notification=" ")
     draft["currency"] = cur
     rate = draft["usd"] if cur == "USD" else draft["eur"]
     symbol = "$" if cur == "USD" else "€"
@@ -2425,7 +2425,7 @@ async def cb_table1(event: MessageCallback):
     user_states[uid] = {"table":1}
     batch_docs[uid] = []
     await msg.edit(text="💳 <b>ДДС — Движение денежных средств</b>\n\nОтправь документ: фото, PDF, текст или скрин CRM.\nНесколько по одной заявке — кидай по одному.")
-    await event.bot.send_callback(cb.callback_id)
+    await event.bot.send_callback(cb.callback_id, notification=" ")
 
 @router.message_callback(F.callback.payload == "table_2")
 async def cb_table2(event: MessageCallback):
@@ -2439,7 +2439,7 @@ async def cb_table2(event: MessageCallback):
         "Отправь документы по заявке: чек, платёжку, скрин CRM.\n"
         "Все документы по одной заявке — кидай по одному.\n"
         "Данные соберутся в одну строку.")
-    await event.bot.send_callback(cb.callback_id)
+    await event.bot.send_callback(cb.callback_id, notification=" ")
 
 @router.message_callback(F.callback.payload == "table_guides")
 async def cb_table_guides(event: MessageCallback):
@@ -2456,7 +2456,7 @@ async def cb_table_guides(event: MessageCallback):
         "• Скриншот визитки/переписки\n"
         "• Голосовое сообщение\n\n"
         "Можно несколько сообщений — потом нажми «Обработать».")
-    await event.bot.send_callback(cb.callback_id)
+    await event.bot.send_callback(cb.callback_id, notification=" ")
 
 @router.message_callback(F.callback.payload == "guide_search_start")
 async def cb_guide_search_start(event: MessageCallback):
@@ -2465,7 +2465,7 @@ async def cb_guide_search_start(event: MessageCallback):
     uid = cb.user.user_id
     user_states[uid] = {"table": "guide_search", "step": "guide_search"}
     await msg.edit(text="🔍 Напиши страну, город или имя гида для поиска:")
-    await event.bot.send_callback(cb.callback_id)
+    await event.bot.send_callback(cb.callback_id, notification=" ")
 
 KUDIR_PROMPT = """Ты - финансовый ассистент. Проанализируй ВСЕ документы и собери записи для КУДиР.
 
@@ -3619,7 +3619,7 @@ async def ask_more_guide(msg, uid):
 async def cb_guide_more(event: MessageCallback):
     cb = event.callback
     msg = event.message
-    await msg.edit(text="Отправь ещё информацию о гиде."); await event.bot.send_callback(cb.callback_id)
+    await msg.edit(text="Отправь ещё информацию о гиде."); await event.bot.send_callback(cb.callback_id, notification=" ")
 
 # ==================== ГОЛОСОВЫЕ СООБЩЕНИЯ ====================
 # Распознавание через Сбер SaluteSpeech: бесплатный лимит 60 мин/мес для PERS-тарифа.
@@ -4011,10 +4011,10 @@ async def cb_lovable(event: MessageCallback):
     try:
         idx = int(cb.payload[4:])
     except Exception:
-        return await event.bot.send_callback(cb.callback_id)
+        return await event.bot.send_callback(cb.callback_id, notification=" ")
     ideas = user_states.get(uid, {}).get("_recent_ideas") or []
     if idx >= len(ideas):
-        return await event.bot.send_callback(cb.callback_id)
+        return await event.bot.send_callback(cb.callback_id, notification=" ")
     idea = ideas[idx]
 
     parts = ["Сделай мне сайт/прототип:", "", idea["text"]]
@@ -4039,7 +4039,7 @@ async def cb_lovable(event: MessageCallback):
         [LinkButton(text="🚀 Открыть Lovable бот", url="https://t.me/lovable_telegram_bot")]
     ])
     await msg.answer(msg_text, attachments=[kb])
-    await event.bot.send_callback(cb.callback_id)
+    await event.bot.send_callback(cb.callback_id, notification=" ")
 
 
 @router.message_created(F.message)
@@ -4169,7 +4169,7 @@ async def cb_guide_go(event: MessageCallback):
     msg = event.message
     uid = cb.user.user_id
     docs = guide_docs.get(uid, [])
-    if not docs: return await event.bot.send_callback(cb.callback_id)
+    if not docs: return await event.bot.send_callback(cb.callback_id, notification=" ")
     await msg.edit(text="🗺 Анализирую информацию о гиде...")
     try:
         content = []
@@ -4183,7 +4183,7 @@ async def cb_guide_go(event: MessageCallback):
         await process_guide_result(cb.message, uid, r)
     except Exception as e:
         logger.error(f"Guide batch: {e}"); await msg.edit(text=f"Ошибка: {str(e)[:100]}. /start")
-    await event.bot.send_callback(cb.callback_id)
+    await event.bot.send_callback(cb.callback_id, notification=" ")
 
 async def process_guide_result(msg, uid, response):
     try:
@@ -4254,40 +4254,40 @@ async def cb_ge_country(event: MessageCallback):
     cb = event.callback
     msg = event.message
     uid = cb.user.user_id
-    if uid not in user_states: return await event.bot.send_callback(cb.callback_id)
-    user_states[uid]["step"] = "guide_country"; await msg.answer(text="Страна (ЗАГЛАВНЫМИ):"); await event.bot.send_callback(cb.callback_id)
+    if uid not in user_states: return await event.bot.send_callback(cb.callback_id, notification=" ")
+    user_states[uid]["step"] = "guide_country"; await msg.answer(text="Страна (ЗАГЛАВНЫМИ):"); await event.bot.send_callback(cb.callback_id, notification=" ")
 
 @router.message_callback(F.callback.payload == "ge_city")
 async def cb_ge_city(event: MessageCallback):
     cb = event.callback
     msg = event.message
     uid = cb.user.user_id
-    if uid not in user_states: return await event.bot.send_callback(cb.callback_id)
-    user_states[uid]["step"] = "guide_city"; await msg.answer(text="Город:"); await event.bot.send_callback(cb.callback_id)
+    if uid not in user_states: return await event.bot.send_callback(cb.callback_id, notification=" ")
+    user_states[uid]["step"] = "guide_city"; await msg.answer(text="Город:"); await event.bot.send_callback(cb.callback_id, notification=" ")
 
 @router.message_callback(F.callback.payload == "ge_name")
 async def cb_ge_name(event: MessageCallback):
     cb = event.callback
     msg = event.message
     uid = cb.user.user_id
-    if uid not in user_states: return await event.bot.send_callback(cb.callback_id)
-    user_states[uid]["step"] = "guide_name"; await msg.answer(text="Имя гида:"); await event.bot.send_callback(cb.callback_id)
+    if uid not in user_states: return await event.bot.send_callback(cb.callback_id, notification=" ")
+    user_states[uid]["step"] = "guide_name"; await msg.answer(text="Имя гида:"); await event.bot.send_callback(cb.callback_id, notification=" ")
 
 @router.message_callback(F.callback.payload == "ge_contacts")
 async def cb_ge_contacts(event: MessageCallback):
     cb = event.callback
     msg = event.message
     uid = cb.user.user_id
-    if uid not in user_states: return await event.bot.send_callback(cb.callback_id)
-    user_states[uid]["step"] = "guide_contacts"; await msg.answer(text="Контакты (телефон, email, Instagram...):"); await event.bot.send_callback(cb.callback_id)
+    if uid not in user_states: return await event.bot.send_callback(cb.callback_id, notification=" ")
+    user_states[uid]["step"] = "guide_contacts"; await msg.answer(text="Контакты (телефон, email, Instagram...):"); await event.bot.send_callback(cb.callback_id, notification=" ")
 
 @router.message_callback(F.callback.payload == "ge_desc")
 async def cb_ge_desc(event: MessageCallback):
     cb = event.callback
     msg = event.message
     uid = cb.user.user_id
-    if uid not in user_states: return await event.bot.send_callback(cb.callback_id)
-    user_states[uid]["step"] = "guide_desc"; await msg.answer(text="Описание:"); await event.bot.send_callback(cb.callback_id)
+    if uid not in user_states: return await event.bot.send_callback(cb.callback_id, notification=" ")
+    user_states[uid]["step"] = "guide_desc"; await msg.answer(text="Описание:"); await event.bot.send_callback(cb.callback_id, notification=" ")
 
 # Сохранение гида (с проверкой дублей + сортировка по стране)
 @router.message_callback(F.callback.payload == "guide_save")
@@ -4296,7 +4296,7 @@ async def cb_guide_save(event: MessageCallback):
     msg = event.message
     uid = cb.user.user_id
     state = user_states.get(uid)
-    if not state or not state.get("guide_ops") or "guide_idx" not in state: return await event.bot.send_callback(cb.callback_id)
+    if not state or not state.get("guide_ops") or "guide_idx" not in state: return await event.bot.send_callback(cb.callback_id, notification=" ")
     g = state["guide_ops"][state["guide_idx"]]
     try:
         sheet = gc.open_by_key(SPREADSHEET_ID_GUIDES).sheet1
@@ -4328,16 +4328,16 @@ async def cb_guide_save(event: MessageCallback):
                 RESET_ROW,
             ])
             await msg.answer(text=f"<b>Похожий гид уже есть:</b>\n{existing_info}\n\nЧто сделать?", attachments=[kb])
-            await event.bot.send_callback(cb.callback_id)
+            await event.bot.send_callback(cb.callback_id, notification=" ")
             return
 
         # Нет дубля — вставляем с сортировкой по стране
         insert_guide_sorted(sheet, all_rows, g)
         await msg.edit(text=msg.text + "\n\n✅ Записано в базу гидов!")
         await advance_guide(cb.message, uid, state)
-        await event.bot.send_callback(cb.callback_id)
+        await event.bot.send_callback(cb.callback_id, notification=" ")
     except Exception as e:
-        logger.error(f"Guide write: {e}"); await event.bot.send_callback(cb.callback_id)
+        logger.error(f"Guide write: {e}"); await event.bot.send_callback(cb.callback_id, notification=" ")
 
 @router.message_callback(F.callback.payload == "guide_update_dup")
 async def cb_guide_update_dup(event: MessageCallback):
@@ -4346,10 +4346,10 @@ async def cb_guide_update_dup(event: MessageCallback):
     """Заменить существующую запись гида полностью."""
     uid = cb.user.user_id
     state = user_states.get(uid)
-    if not state or not state.get("guide_ops") or "guide_idx" not in state: return await event.bot.send_callback(cb.callback_id)
+    if not state or not state.get("guide_ops") or "guide_idx" not in state: return await event.bot.send_callback(cb.callback_id, notification=" ")
     g = state["guide_ops"][state["guide_idx"]]
     dup_row = state.get("_dup_row")
-    if not dup_row: return await event.bot.send_callback(cb.callback_id)
+    if not dup_row: return await event.bot.send_callback(cb.callback_id, notification=" ")
     try:
         sheet = gc.open_by_key(SPREADSHEET_ID_GUIDES).sheet1
         row_data = [g.get("country","").upper(), g.get("city",""), g.get("guide_name",""),
@@ -4359,9 +4359,9 @@ async def cb_guide_update_dup(event: MessageCallback):
                 sheet.update_cell(dup_row, col_idx + 1, str(val))
         state.pop("_dup_row", None)
         await msg.edit(text="Гид обновлён (заменён).")
-        await advance_guide(cb.message, uid, state); await event.bot.send_callback(cb.callback_id)
+        await advance_guide(cb.message, uid, state); await event.bot.send_callback(cb.callback_id, notification=" ")
     except Exception as e:
-        logger.error(f"Guide update: {e}"); await event.bot.send_callback(cb.callback_id)
+        logger.error(f"Guide update: {e}"); await event.bot.send_callback(cb.callback_id, notification=" ")
 
 @router.message_callback(F.callback.payload == "guide_supplement_dup")
 async def cb_guide_supplement(event: MessageCallback):
@@ -4370,10 +4370,10 @@ async def cb_guide_supplement(event: MessageCallback):
     """Дополнить существующую запись — добавить новые данные, не удаляя старые."""
     uid = cb.user.user_id
     state = user_states.get(uid)
-    if not state or not state.get("guide_ops") or "guide_idx" not in state: return await event.bot.send_callback(cb.callback_id)
+    if not state or not state.get("guide_ops") or "guide_idx" not in state: return await event.bot.send_callback(cb.callback_id, notification=" ")
     g = state["guide_ops"][state["guide_idx"]]
     dup_row = state.get("_dup_row")
-    if not dup_row: return await event.bot.send_callback(cb.callback_id)
+    if not dup_row: return await event.bot.send_callback(cb.callback_id, notification=" ")
     try:
         sheet = gc.open_by_key(SPREADSHEET_ID_GUIDES).sheet1
         existing = sheet.row_values(dup_row)
@@ -4397,9 +4397,9 @@ async def cb_guide_supplement(event: MessageCallback):
                     sheet.update_cell(dup_row, col_idx + 1, f"{old_val}\n{new_val}")
         state.pop("_dup_row", None)
         await msg.edit(text="Информация дополнена!")
-        await advance_guide(cb.message, uid, state); await event.bot.send_callback(cb.callback_id)
+        await advance_guide(cb.message, uid, state); await event.bot.send_callback(cb.callback_id, notification=" ")
     except Exception as e:
-        logger.error(f"Guide supplement: {e}"); await event.bot.send_callback(cb.callback_id)
+        logger.error(f"Guide supplement: {e}"); await event.bot.send_callback(cb.callback_id, notification=" ")
 
 @router.message_callback(F.callback.payload == "guide_force_save")
 async def cb_guide_force_save(event: MessageCallback):
@@ -4408,7 +4408,7 @@ async def cb_guide_force_save(event: MessageCallback):
     """Добавить как нового несмотря на дубль."""
     uid = cb.user.user_id
     state = user_states.get(uid)
-    if not state or not state.get("guide_ops") or "guide_idx" not in state: return await event.bot.send_callback(cb.callback_id)
+    if not state or not state.get("guide_ops") or "guide_idx" not in state: return await event.bot.send_callback(cb.callback_id, notification=" ")
     g = state["guide_ops"][state["guide_idx"]]
     try:
         sheet = gc.open_by_key(SPREADSHEET_ID_GUIDES).sheet1
@@ -4417,9 +4417,9 @@ async def cb_guide_force_save(event: MessageCallback):
         insert_guide_sorted(sheet, all_rows, g)
         await msg.edit(text="✅ Записано как новый гид!")
         await advance_guide(cb.message, uid, state)
-        await event.bot.send_callback(cb.callback_id)
+        await event.bot.send_callback(cb.callback_id, notification=" ")
     except Exception as e:
-        logger.error(f"Guide force: {e}"); await event.bot.send_callback(cb.callback_id)
+        logger.error(f"Guide force: {e}"); await event.bot.send_callback(cb.callback_id, notification=" ")
 
 @router.message_callback(F.callback.payload == "guide_skip_dup")
 async def cb_guide_skip(event: MessageCallback):
@@ -4427,11 +4427,11 @@ async def cb_guide_skip(event: MessageCallback):
     msg = event.message
     uid = cb.user.user_id
     state = user_states.get(uid)
-    if not state: return await event.bot.send_callback(cb.callback_id)
+    if not state: return await event.bot.send_callback(cb.callback_id, notification=" ")
     state.pop("_dup_row", None)
     await msg.edit(text="Пропущено.")
     await advance_guide(cb.message, uid, state)
-    await event.bot.send_callback(cb.callback_id)
+    await event.bot.send_callback(cb.callback_id, notification=" ")
 
 def insert_guide_sorted(sheet, all_rows, g):
     """Вставить гида в таблицу, сортируя по стране (столбец A) алфавитно."""
@@ -4492,7 +4492,7 @@ async def ask_more(msg, uid):
 async def cb_more(event: MessageCallback):
     cb = event.callback
     msg = event.message
-    await msg.edit(text="Отправь следующий документ."); await event.bot.send_callback(cb.callback_id)
+    await msg.edit(text="Отправь следующий документ."); await event.bot.send_callback(cb.callback_id, notification=" ")
 
 @router.message_callback(F.callback.payload == "batch_go")
 async def cb_go(event: MessageCallback):
@@ -4500,7 +4500,7 @@ async def cb_go(event: MessageCallback):
     msg = event.message
     uid = cb.user.user_id
     docs = batch_docs.get(uid, [])
-    if not docs: return await event.bot.send_callback(cb.callback_id)
+    if not docs: return await event.bot.send_callback(cb.callback_id, notification=" ")
     await msg.edit(text="Анализирую...")
     try:
         content = []
@@ -4522,7 +4522,7 @@ async def cb_go(event: MessageCallback):
             await process_result(cb.message, uid, r)
     except Exception as e:
         logger.error(f"Batch: {e}"); await msg.edit(text=f"Ошибка: {str(e)[:100]}. /start")
-    await event.bot.send_callback(cb.callback_id)
+    await event.bot.send_callback(cb.callback_id, notification=" ")
 
 # ==================== ОБРАБОТКА РЕЗУЛЬТАТА ====================
 
@@ -4696,7 +4696,7 @@ async def cb_ea(event: MessageCallback):
     cb = event.callback
     msg = event.message
     uid = cb.user.user_id
-    if uid not in user_states: return await event.bot.send_callback(cb.callback_id)
+    if uid not in user_states: return await event.bot.send_callback(cb.callback_id, notification=" ")
     user_states[uid]["step"] = "article"
     kb = _make_kb([
         [CallbackButton(text="01. Доходы", payload="artg_01")],
@@ -4706,31 +4706,31 @@ async def cb_ea(event: MessageCallback):
         [CallbackButton(text="05. Переводы", payload="artg_05")],
         [CallbackButton(text="06. Обслуживание", payload="artg_06")],
         RESET_ROW])
-    await msg.answer(text="Группа:", attachments=[kb]); await event.bot.send_callback(cb.callback_id)
+    await msg.answer(text="Группа:", attachments=[kb]); await event.bot.send_callback(cb.callback_id, notification=" ")
 
 @router.message_callback(F.payload.startswith("artg_"))
 async def cb_artg(event: MessageCallback):
     cb = event.callback
     msg = event.message
     uid = cb.user.user_id
-    if uid not in user_states: return await event.bot.send_callback(cb.callback_id)
+    if uid not in user_states: return await event.bot.send_callback(cb.callback_id, notification=" ")
     prefix = cb.payload[5:]
     rows = [[CallbackButton(text=(a.split(". ",1)[1] if ". " in a else a)[:35], payload=f"art_{i}")] for i,a in enumerate(ARTICLES) if a.startswith(prefix)]
     rows.append(RESET_ROW)
     await msg.edit(text="Статья:")
-    await msg.answer(text="Выбери:", attachments=[_make_kb(rows)]); await event.bot.send_callback(cb.callback_id)
+    await msg.answer(text="Выбери:", attachments=[_make_kb(rows)]); await event.bot.send_callback(cb.callback_id, notification=" ")
 
 @router.message_callback(F.payload.startswith("art_"))
 async def cb_art(event: MessageCallback):
     cb = event.callback
     msg = event.message
     uid = cb.user.user_id
-    if uid not in user_states: return await event.bot.send_callback(cb.callback_id)
+    if uid not in user_states: return await event.bot.send_callback(cb.callback_id, notification=" ")
     idx = int(cb.payload[4:]); cur = user_states[uid]["operations"][user_states[uid]["current_op"]]
     cur["article"] = ARTICLES[idx]; cur["amount"] = apply_sign(cur["amount"], ARTICLES[idx])
     user_states[uid]["step"] = "preview"
     await msg.edit(text=f"Статья: {ARTICLES[idx]}\nСумма: {cur['amount']}")
-    await show_op(cb.message, uid); await event.bot.send_callback(cb.callback_id)
+    await show_op(cb.message, uid); await event.bot.send_callback(cb.callback_id, notification=" ")
 
 
 # Регистрация обработчиков редактирования
@@ -4739,43 +4739,43 @@ async def cb_ec(event: MessageCallback):
     cb = event.callback
     msg = event.message
     uid = cb.user.user_id
-    if uid not in user_states: return await event.bot.send_callback(cb.callback_id)
-    user_states[uid]["step"] = "edit_comment"; await msg.answer(text="Комментарий:"); await event.bot.send_callback(cb.callback_id)
+    if uid not in user_states: return await event.bot.send_callback(cb.callback_id, notification=" ")
+    user_states[uid]["step"] = "edit_comment"; await msg.answer(text="Комментарий:"); await event.bot.send_callback(cb.callback_id, notification=" ")
 
 @router.message_callback(F.callback.payload == "edit_amount")
 async def cb_eam(event: MessageCallback):
     cb = event.callback
     msg = event.message
     uid = cb.user.user_id
-    if uid not in user_states: return await event.bot.send_callback(cb.callback_id)
-    user_states[uid]["step"] = "edit_amount"; await msg.answer(text="Сумма:"); await event.bot.send_callback(cb.callback_id)
+    if uid not in user_states: return await event.bot.send_callback(cb.callback_id, notification=" ")
+    user_states[uid]["step"] = "edit_amount"; await msg.answer(text="Сумма:"); await event.bot.send_callback(cb.callback_id, notification=" ")
 
 @router.message_callback(F.callback.payload == "edit_date")
 async def cb_ed(event: MessageCallback):
     cb = event.callback
     msg = event.message
     uid = cb.user.user_id
-    if uid not in user_states: return await event.bot.send_callback(cb.callback_id)
+    if uid not in user_states: return await event.bot.send_callback(cb.callback_id, notification=" ")
     user_states[uid]["step"] = "edit_date"
     today_str = datetime.datetime.now().strftime("%d.%m.%Y")
     kb = _make_kb([[CallbackButton(text=f"Сегодня ({today_str})", payload="date_today")]])
     await msg.answer(text="Дата (ДД.ММ.ГГГГ):", attachments=[kb])
-    await event.bot.send_callback(cb.callback_id)
+    await event.bot.send_callback(cb.callback_id, notification=" ")
 
 @router.message_callback(F.callback.payload == "date_today")
 async def cb_date_today(event: MessageCallback):
     cb = event.callback
     msg = event.message
     uid = cb.user.user_id
-    if uid not in user_states: return await event.bot.send_callback(cb.callback_id)
+    if uid not in user_states: return await event.bot.send_callback(cb.callback_id, notification=" ")
     state = user_states[uid]
-    if not state.get("operations") or "current_op" not in state: return await event.bot.send_callback(cb.callback_id)
+    if not state.get("operations") or "current_op" not in state: return await event.bot.send_callback(cb.callback_id, notification=" ")
     today_str = datetime.datetime.now().strftime("%d.%m.%Y")
     cur = state["operations"][state["current_op"]]
     cur["date"] = today_str
     state["step"] = "preview"
     await msg.edit(attachments=[None])
-    await event.bot.send_callback(cb.callback_id)
+    await event.bot.send_callback(cb.callback_id, notification=" ")
     await show_op(cb.message, uid)
 
 @router.message_callback(F.callback.payload == "edit_order")
@@ -4783,61 +4783,61 @@ async def cb_eo(event: MessageCallback):
     cb = event.callback
     msg = event.message
     uid = cb.user.user_id
-    if uid not in user_states: return await event.bot.send_callback(cb.callback_id)
-    user_states[uid]["step"] = "edit_order"; await msg.answer(text="Номер заявки:"); await event.bot.send_callback(cb.callback_id)
+    if uid not in user_states: return await event.bot.send_callback(cb.callback_id, notification=" ")
+    user_states[uid]["step"] = "edit_order"; await msg.answer(text="Номер заявки:"); await event.bot.send_callback(cb.callback_id, notification=" ")
 
 @router.message_callback(F.callback.payload == "edit_note")
 async def cb_en(event: MessageCallback):
     cb = event.callback
     msg = event.message
     uid = cb.user.user_id
-    if uid not in user_states: return await event.bot.send_callback(cb.callback_id)
-    user_states[uid]["step"] = "edit_note"; await msg.answer(text="Примечание:"); await event.bot.send_callback(cb.callback_id)
+    if uid not in user_states: return await event.bot.send_callback(cb.callback_id, notification=" ")
+    user_states[uid]["step"] = "edit_note"; await msg.answer(text="Примечание:"); await event.bot.send_callback(cb.callback_id, notification=" ")
 
 @router.message_callback(F.callback.payload == "edit_monthyear")
 async def cb_emy(event: MessageCallback):
     cb = event.callback
     msg = event.message
     uid = cb.user.user_id
-    if uid not in user_states: return await event.bot.send_callback(cb.callback_id)
-    user_states[uid]["step"] = "edit_month"; await msg.answer(text="Месяц тура? (январь, февраль, март, апрель, май, июнь, июль, август, сентябрь, октябрь, ноябрь, декабрь)"); await event.bot.send_callback(cb.callback_id)
+    if uid not in user_states: return await event.bot.send_callback(cb.callback_id, notification=" ")
+    user_states[uid]["step"] = "edit_month"; await msg.answer(text="Месяц тура? (январь, февраль, март, апрель, май, июнь, июль, август, сентябрь, октябрь, ноябрь, декабрь)"); await event.bot.send_callback(cb.callback_id, notification=" ")
 
 @router.message_callback(F.callback.payload == "edit_operator")
 async def cb_eop(event: MessageCallback):
     cb = event.callback
     msg = event.message
     uid = cb.user.user_id
-    if uid not in user_states: return await event.bot.send_callback(cb.callback_id)
+    if uid not in user_states: return await event.bot.send_callback(cb.callback_id, notification=" ")
     rows = [[CallbackButton(text=op, payload=f"op_{op[:25]}")] for op in OPERATORS[:15]]
     rows.append([CallbackButton(text="Другой (ввести)", payload="op_other")])
     rows.append(RESET_ROW)
     await msg.answer(text="Туроператор:", attachments=[_make_kb(rows)])
-    await event.bot.send_callback(cb.callback_id)
+    await event.bot.send_callback(cb.callback_id, notification=" ")
 
 @router.message_callback(F.payload.startswith("op_"))
 async def cb_op(event: MessageCallback):
     cb = event.callback
     msg = event.message
     uid = cb.user.user_id
-    if uid not in user_states: return await event.bot.send_callback(cb.callback_id)
+    if uid not in user_states: return await event.bot.send_callback(cb.callback_id, notification=" ")
     op = cb.payload[3:]
     if op == "other":
         user_states[uid]["step"] = "edit_operator_custom"
         await msg.answer(text="Напиши название туроператора:")
-        await event.bot.send_callback(cb.callback_id); return
+        await event.bot.send_callback(cb.callback_id, notification=" "); return
     state = user_states[uid]
     if state.get("operations"):
         state["operations"][state["current_op"]]["tour_operator"] = op
     state["step"] = "preview"
     await msg.edit(text=f"Туроператор: {op}")
-    await show_op(cb.message, uid); await event.bot.send_callback(cb.callback_id)
+    await show_op(cb.message, uid); await event.bot.send_callback(cb.callback_id, notification=" ")
 
 @router.message_callback(F.callback.payload == "edit_account")
 async def cb_eacc(event: MessageCallback):
     cb = event.callback
     msg = event.message
     uid = cb.user.user_id
-    if uid not in user_states: return await event.bot.send_callback(cb.callback_id)
+    if uid not in user_states: return await event.bot.send_callback(cb.callback_id, notification=" ")
     kb = _make_kb([
         [CallbackButton(text="расчетный счет", payload="acc_расчетный счет")],
         [CallbackButton(text="Сбербанк", payload="acc_Сбербанк"),
@@ -4846,25 +4846,25 @@ async def cb_eacc(event: MessageCallback):
          CallbackButton(text="ВТБ", payload="acc_ВТБ")],
         [CallbackButton(text="Другой банк", payload="acc_other")],
         RESET_ROW])
-    await msg.answer(text="Какой счёт:", attachments=[kb]); await event.bot.send_callback(cb.callback_id)
+    await msg.answer(text="Какой счёт:", attachments=[kb]); await event.bot.send_callback(cb.callback_id, notification=" ")
 
 @router.message_callback(F.payload.startswith("acc_"))
 async def cb_acc(event: MessageCallback):
     cb = event.callback
     msg = event.message
     uid = cb.user.user_id
-    if uid not in user_states: return await event.bot.send_callback(cb.callback_id)
+    if uid not in user_states: return await event.bot.send_callback(cb.callback_id, notification=" ")
     acc = cb.payload[4:]
     if acc == "other":
         user_states[uid]["step"] = "edit_account_custom"
         await msg.answer(text="Напиши название банка:")
-        await event.bot.send_callback(cb.callback_id); return
+        await event.bot.send_callback(cb.callback_id, notification=" "); return
     state = user_states[uid]
     if state.get("operations"):
         state["operations"][state["current_op"]]["account"] = acc
     state["step"] = "preview"
     await msg.edit(text=f"Счёт: {acc}")
-    await show_op(cb.message, uid); await event.bot.send_callback(cb.callback_id)
+    await show_op(cb.message, uid); await event.bot.send_callback(cb.callback_id, notification=" ")
 
 # ==================== ТЕКСТОВЫЙ ВВОД ====================
 
@@ -5006,7 +5006,7 @@ async def cb_confirm(event: MessageCallback):
     msg = event.message
     uid = cb.user.user_id
     state = user_states.get(uid)
-    if not state or not state.get("operations") or "current_op" not in state: return await event.bot.send_callback(cb.callback_id)
+    if not state or not state.get("operations") or "current_op" not in state: return await event.bot.send_callback(cb.callback_id, notification=" ")
     cur = state["operations"][state["current_op"]]
     try:
         row = [cur.get("date",""),cur.get("payer",""),cur.get("account",""),format_num(cur.get("amount","")),
@@ -5025,19 +5025,19 @@ async def cb_confirm(event: MessageCallback):
                 RESET_ROW])
             await msg.answer(text="Комиссия банка?", attachments=[kb])
         else: await advance(cb.message, uid, state)
-        await event.bot.send_callback(cb.callback_id)
+        await event.bot.send_callback(cb.callback_id, notification=" ")
     except Exception as e:
-        logger.error(f"Write: {e}"); await event.bot.send_callback(cb.callback_id)
+        logger.error(f"Write: {e}"); await event.bot.send_callback(cb.callback_id, notification=" ")
 
 @router.message_callback(F.callback.payload == "commission_skip")
 async def cb_cskip(event: MessageCallback):
     cb = event.callback
     msg = event.message
     uid = cb.user.user_id; state = user_states.get(uid)
-    if not state: return await event.bot.send_callback(cb.callback_id)
+    if not state: return await event.bot.send_callback(cb.callback_id, notification=" ")
     state.pop("_commission_base", None)
     await msg.edit(text="Без комиссии.")
-    await advance(cb.message, uid, state); await event.bot.send_callback(cb.callback_id)
+    await advance(cb.message, uid, state); await event.bot.send_callback(cb.callback_id, notification=" ")
 
 async def _write_commission(comm: float, state: dict, event: MessageCallback):
     base = state.get("_commission_base", {})
@@ -5058,7 +5058,7 @@ async def cb_cpct(event: MessageCallback):
     cb = event.callback
     msg = event.message
     uid = cb.user.user_id; state = user_states.get(uid)
-    if not state: return await event.bot.send_callback(cb.callback_id)
+    if not state: return await event.bot.send_callback(cb.callback_id, notification=" ")
     try:
         base_amount = abs(float(str(state.get("_commission_base",{}).get("amount",0)).replace(",",".")))
         comm = round(base_amount * 0.7 / 100, 2)
@@ -5066,30 +5066,30 @@ async def cb_cpct(event: MessageCallback):
     except Exception as e:
         logger.error(f"Commission 0.7%: {e}")
         await msg.answer(text="Не удалось посчитать 0,7%.")
-    await advance(cb.message, uid, state); await event.bot.send_callback(cb.callback_id)
+    await advance(cb.message, uid, state); await event.bot.send_callback(cb.callback_id, notification=" ")
 
 @router.message_callback(F.callback.payload == "commission_fixed")
 async def cb_cfixed(event: MessageCallback):
     cb = event.callback
     msg = event.message
     uid = cb.user.user_id; state = user_states.get(uid)
-    if not state: return await event.bot.send_callback(cb.callback_id)
+    if not state: return await event.bot.send_callback(cb.callback_id, notification=" ")
     try:
         await _write_commission(1500.0, state, cb)
     except Exception as e:
         logger.error(f"Commission 1500: {e}")
         await msg.answer(text="Ошибка записи.")
-    await advance(cb.message, uid, state); await event.bot.send_callback(cb.callback_id)
+    await advance(cb.message, uid, state); await event.bot.send_callback(cb.callback_id, notification=" ")
 
 @router.message_callback(F.callback.payload == "commission_custom")
 async def cb_ccustom(event: MessageCallback):
     cb = event.callback
     msg = event.message
     uid = cb.user.user_id; state = user_states.get(uid)
-    if not state: return await event.bot.send_callback(cb.callback_id)
+    if not state: return await event.bot.send_callback(cb.callback_id, notification=" ")
     state["step"] = "ask_commission"
     await msg.answer(text="Напиши сумму комиссии (например 245) или процент (например 0.7%):")
-    await event.bot.send_callback(cb.callback_id)
+    await event.bot.send_callback(cb.callback_id, notification=" ")
 
 async def advance(msg, uid, state):
     state["current_op"] += 1
@@ -5109,7 +5109,7 @@ async def cb_cancel(event: MessageCallback):
     cb = event.callback
     msg = event.message
     user_states.pop(cb.user.user_id, None); batch_docs.pop(cb.user.user_id, None)
-    await msg.edit(text=msg.text + "\n\nОтменено."); await event.bot.send_callback(cb.callback_id)
+    await msg.edit(text=msg.text + "\n\nОтменено."); await event.bot.send_callback(cb.callback_id, notification=" ")
 
 def fmt(d):
     lines = []
@@ -5266,88 +5266,88 @@ async def cb_kpt(event: MessageCallback):
     cb = event.callback
     msg = event.message
     uid = cb.user.user_id
-    if uid not in user_states: return await event.bot.send_callback(cb.callback_id)
+    if uid not in user_states: return await event.bot.send_callback(cb.callback_id, notification=" ")
     kb = _make_kb([
         [CallbackButton(text="по корпоративной карте СБП", payload="kpv_sbp")],
         [CallbackButton(text="Ввести номер пп", payload="kpv_pp")],RESET_ROW])
-    await msg.answer(text="Тип платежа:", attachments=[kb]); await event.bot.send_callback(cb.callback_id)
+    await msg.answer(text="Тип платежа:", attachments=[kb]); await event.bot.send_callback(cb.callback_id, notification=" ")
 
 @router.message_callback(F.callback.payload == "kpv_sbp")
 async def cb_kpsbp(event: MessageCallback):
     cb = event.callback
     msg = event.message
     uid = cb.user.user_id
-    if uid not in user_states: return await event.bot.send_callback(cb.callback_id)
+    if uid not in user_states: return await event.bot.send_callback(cb.callback_id, notification=" ")
     user_states[uid]["kudir"]["payment_type"] = "по корпоративной карте СБП"
-    await msg.edit(text="Платёж: СБП"); await show_kudir(cb.message, uid); await event.bot.send_callback(cb.callback_id)
+    await msg.edit(text="Платёж: СБП"); await show_kudir(cb.message, uid); await event.bot.send_callback(cb.callback_id, notification=" ")
 
 @router.message_callback(F.callback.payload == "kpv_pp")
 async def cb_kppp(event: MessageCallback):
     cb = event.callback
     msg = event.message
     uid = cb.user.user_id
-    if uid not in user_states: return await event.bot.send_callback(cb.callback_id)
-    user_states[uid]["step"] = "kudir_pp"; await msg.answer(text="Номер пп:"); await event.bot.send_callback(cb.callback_id)
+    if uid not in user_states: return await event.bot.send_callback(cb.callback_id, notification=" ")
+    user_states[uid]["step"] = "kudir_pp"; await msg.answer(text="Номер пп:"); await event.bot.send_callback(cb.callback_id, notification=" ")
 
 @router.message_callback(F.callback.payload == "ke_status")
 async def cb_kst(event: MessageCallback):
     cb = event.callback
     msg = event.message
     uid = cb.user.user_id
-    if uid not in user_states: return await event.bot.send_callback(cb.callback_id)
+    if uid not in user_states: return await event.bot.send_callback(cb.callback_id, notification=" ")
     kb = _make_kb([
         [CallbackButton(text="предоплата", payload="ksv_предоплата"),CallbackButton(text="доплата", payload="ksv_доплата")],
         [CallbackButton(text="полная оплата", payload="ksv_полная оплата"),CallbackButton(text="возврат", payload="ksv_возврат")],RESET_ROW])
-    await msg.answer(text="Статус:", attachments=[kb]); await event.bot.send_callback(cb.callback_id)
+    await msg.answer(text="Статус:", attachments=[kb]); await event.bot.send_callback(cb.callback_id, notification=" ")
 
 @router.message_callback(F.payload.startswith("ksv_"))
 async def cb_ksv(event: MessageCallback):
     cb = event.callback
     msg = event.message
     uid = cb.user.user_id
-    if uid not in user_states: return await event.bot.send_callback(cb.callback_id)
+    if uid not in user_states: return await event.bot.send_callback(cb.callback_id, notification=" ")
     user_states[uid]["kudir"]["status"] = cb.payload[4:]
-    await msg.edit(text=f"Статус: {cb.payload[4:]}"); await show_kudir(cb.message, uid); await event.bot.send_callback(cb.callback_id)
+    await msg.edit(text=f"Статус: {cb.payload[4:]}"); await show_kudir(cb.message, uid); await event.bot.send_callback(cb.callback_id, notification=" ")
 
 @router.message_callback(F.callback.payload == "ke_desc")
 async def cb_ked(event: MessageCallback):
     cb = event.callback
     msg = event.message
     uid = cb.user.user_id
-    if uid not in user_states: return await event.bot.send_callback(cb.callback_id)
-    user_states[uid]["step"] = "kudir_desc"; await msg.answer(text="Описание:"); await event.bot.send_callback(cb.callback_id)
+    if uid not in user_states: return await event.bot.send_callback(cb.callback_id, notification=" ")
+    user_states[uid]["step"] = "kudir_desc"; await msg.answer(text="Описание:"); await event.bot.send_callback(cb.callback_id, notification=" ")
 
 @router.message_callback(F.callback.payload == "ke_income")
 async def cb_kei(event: MessageCallback):
     cb = event.callback
     msg = event.message
     uid = cb.user.user_id
-    if uid not in user_states: return await event.bot.send_callback(cb.callback_id)
-    user_states[uid]["step"] = "kudir_income"; await msg.answer(text="Доход:"); await event.bot.send_callback(cb.callback_id)
+    if uid not in user_states: return await event.bot.send_callback(cb.callback_id, notification=" ")
+    user_states[uid]["step"] = "kudir_income"; await msg.answer(text="Доход:"); await event.bot.send_callback(cb.callback_id, notification=" ")
 
 @router.message_callback(F.callback.payload == "ke_topay")
 async def cb_ket(event: MessageCallback):
     cb = event.callback
     msg = event.message
     uid = cb.user.user_id
-    if uid not in user_states: return await event.bot.send_callback(cb.callback_id)
-    user_states[uid]["step"] = "kudir_topay"; await msg.answer(text="Оплата ТО:"); await event.bot.send_callback(cb.callback_id)
+    if uid not in user_states: return await event.bot.send_callback(cb.callback_id, notification=" ")
+    user_states[uid]["step"] = "kudir_topay"; await msg.answer(text="Оплата ТО:"); await event.bot.send_callback(cb.callback_id, notification=" ")
 
 @router.message_callback(F.callback.payload == "ke_note")
 async def cb_ken(event: MessageCallback):
     cb = event.callback
     msg = event.message
     uid = cb.user.user_id
-    if uid not in user_states: return await event.bot.send_callback(cb.callback_id)
-    user_states[uid]["step"] = "kudir_note"; await msg.answer(text="Примечание (ФИО, бронь):"); await event.bot.send_callback(cb.callback_id)
+    if uid not in user_states: return await event.bot.send_callback(cb.callback_id, notification=" ")
+    user_states[uid]["step"] = "kudir_note"; await msg.answer(text="Примечание (ФИО, бронь):"); await event.bot.send_callback(cb.callback_id, notification=" ")
 
 @router.message_callback(F.callback.payload == "ke_contract")
 async def cb_kec(event: MessageCallback):
     cb = event.callback
     msg = event.message
     uid = cb.user.user_id
-    if uid not in user_states: return await event.bot.send_callback(cb.callback_id)
-    user_states[uid]["step"] = "kudir_contract"; await msg.answer(text="Договор (напр. 737 от 20.12.2025):"); await event.bot.send_callback(cb.callback_id)
+    if uid not in user_states: return await event.bot.send_callback(cb.callback_id, notification=" ")
+    user_states[uid]["step"] = "kudir_contract"; await msg.answer(text="Договор (напр. 737 от 20.12.2025):"); await event.bot.send_callback(cb.callback_id, notification=" ")
 
 @router.message_callback(F.callback.payload == "kudir_confirm")
 async def cb_kconfirm(event: MessageCallback):
@@ -5355,7 +5355,7 @@ async def cb_kconfirm(event: MessageCallback):
     msg = event.message
     uid = cb.user.user_id
     state = user_states.get(uid)
-    if not state or not state.get("kudir"): return await event.bot.send_callback(cb.callback_id)
+    if not state or not state.get("kudir"): return await event.bot.send_callback(cb.callback_id, notification=" ")
     d = state["kudir"]
     try:
         sheet = gc.open_by_key(SPREADSHEET_ID_2).sheet1
@@ -5375,7 +5375,7 @@ async def cb_kconfirm(event: MessageCallback):
             }
             await msg.answer(text=f"Следующая запись (осталось {1 + len(rest)}):")
             await show_kudir(cb.message, uid)
-            return await event.bot.send_callback(cb.callback_id)
+            return await event.bot.send_callback(cb.callback_id, notification=" ")
         # Очередь пуста — обычный завершающий экран
         user_states[uid] = {"table": 2}
         batch_docs[uid] = []
@@ -5384,9 +5384,9 @@ async def cb_kconfirm(event: MessageCallback):
             [LinkButton(text="📋 Перейти в Таблицу 2 (КУДиР)", url="https://docs.google.com/spreadsheets/d/1paRk3fvQzwVwK7JyO6RIdjIJGrveBfhyMwD4UtkgJ7I/edit")],
             [LinkButton(text="📘 Таблица КУДиР (основная)", url="https://docs.google.com/spreadsheets/d/11gKJp3yzPpZjINT23gqYwy_F2MpP4qujPZzoSgFG2wg/edit")]
         ])])
-        await event.bot.send_callback(cb.callback_id)
+        await event.bot.send_callback(cb.callback_id, notification=" ")
     except Exception as e:
-        logger.error(f"KUDiR write: {e}"); await event.bot.send_callback(cb.callback_id)
+        logger.error(f"KUDiR write: {e}"); await event.bot.send_callback(cb.callback_id, notification=" ")
 
 
 # ==================== ТУРИСТЫ: ФУНКЦИИ ====================
@@ -5437,7 +5437,7 @@ async def ask_more_tourist(msg, uid):
 async def cb_tourist_more(event: MessageCallback):
     cb = event.callback
     msg = event.message
-    await msg.edit(text="Отправь ещё информацию о туристе."); await event.bot.send_callback(cb.callback_id)
+    await msg.edit(text="Отправь ещё информацию о туристе."); await event.bot.send_callback(cb.callback_id, notification=" ")
 
 @router.message_callback(F.callback.payload == "tourist_go")
 async def cb_tourist_go(event: MessageCallback):
@@ -5445,7 +5445,7 @@ async def cb_tourist_go(event: MessageCallback):
     msg = event.message
     uid = cb.user.user_id
     docs = tourist_docs.get(uid, [])
-    if not docs: return await event.bot.send_callback(cb.callback_id)
+    if not docs: return await event.bot.send_callback(cb.callback_id, notification=" ")
     await msg.edit(text="Анализирую...")
     try:
         content = []
@@ -5485,7 +5485,7 @@ async def cb_tourist_go(event: MessageCallback):
         await msg.edit(text="Не распознал. Попробуй снова.")
     except Exception as e:
         logger.error(f"Tourist: {e}"); await msg.edit(text=f"Ошибка: {str(e)[:100]}")
-    await event.bot.send_callback(cb.callback_id)
+    await event.bot.send_callback(cb.callback_id, notification=" ")
 
 async def show_tourist(msg, uid):
     state = user_states[uid]
@@ -5518,40 +5518,40 @@ async def cb_te_name(event: MessageCallback):
     cb = event.callback
     msg = event.message
     uid = cb.user.user_id
-    if uid not in user_states: return await event.bot.send_callback(cb.callback_id)
-    user_states[uid]["step"] = "tourist_edit_name"; await msg.answer(text="ФИО:"); await event.bot.send_callback(cb.callback_id)
+    if uid not in user_states: return await event.bot.send_callback(cb.callback_id, notification=" ")
+    user_states[uid]["step"] = "tourist_edit_name"; await msg.answer(text="ФИО:"); await event.bot.send_callback(cb.callback_id, notification=" ")
 
 @router.message_callback(F.callback.payload == "te_phone")
 async def cb_te_phone(event: MessageCallback):
     cb = event.callback
     msg = event.message
     uid = cb.user.user_id
-    if uid not in user_states: return await event.bot.send_callback(cb.callback_id)
-    user_states[uid]["step"] = "tourist_edit_phone"; await msg.answer(text="Контакт:"); await event.bot.send_callback(cb.callback_id)
+    if uid not in user_states: return await event.bot.send_callback(cb.callback_id, notification=" ")
+    user_states[uid]["step"] = "tourist_edit_phone"; await msg.answer(text="Контакт:"); await event.bot.send_callback(cb.callback_id, notification=" ")
 
 @router.message_callback(F.callback.payload == "te_dest")
 async def cb_te_dest(event: MessageCallback):
     cb = event.callback
     msg = event.message
     uid = cb.user.user_id
-    if uid not in user_states: return await event.bot.send_callback(cb.callback_id)
-    user_states[uid]["step"] = "tourist_edit_dest"; await msg.answer(text="Направление:"); await event.bot.send_callback(cb.callback_id)
+    if uid not in user_states: return await event.bot.send_callback(cb.callback_id, notification=" ")
+    user_states[uid]["step"] = "tourist_edit_dest"; await msg.answer(text="Направление:"); await event.bot.send_callback(cb.callback_id, notification=" ")
 
 @router.message_callback(F.callback.payload == "te_wishes")
 async def cb_te_wishes(event: MessageCallback):
     cb = event.callback
     msg = event.message
     uid = cb.user.user_id
-    if uid not in user_states: return await event.bot.send_callback(cb.callback_id)
-    user_states[uid]["step"] = "tourist_edit_wishes"; await msg.answer(text="Пожелания:"); await event.bot.send_callback(cb.callback_id)
+    if uid not in user_states: return await event.bot.send_callback(cb.callback_id, notification=" ")
+    user_states[uid]["step"] = "tourist_edit_wishes"; await msg.answer(text="Пожелания:"); await event.bot.send_callback(cb.callback_id, notification=" ")
 
 @router.message_callback(F.callback.payload == "te_source")
 async def cb_te_source(event: MessageCallback):
     cb = event.callback
     msg = event.message
     uid = cb.user.user_id
-    if uid not in user_states: return await event.bot.send_callback(cb.callback_id)
-    user_states[uid]["step"] = "tourist_edit_source"; await msg.answer(text="Источник:"); await event.bot.send_callback(cb.callback_id)
+    if uid not in user_states: return await event.bot.send_callback(cb.callback_id, notification=" ")
+    user_states[uid]["step"] = "tourist_edit_source"; await msg.answer(text="Источник:"); await event.bot.send_callback(cb.callback_id, notification=" ")
 
 @router.message_callback(F.callback.payload == "tourist_save")
 async def cb_tourist_save(event: MessageCallback):
@@ -5559,7 +5559,7 @@ async def cb_tourist_save(event: MessageCallback):
     msg = event.message
     uid = cb.user.user_id
     state = user_states.get(uid)
-    if not state or not state.get("tourist_ops") or "tourist_idx" not in state: return await event.bot.send_callback(cb.callback_id)
+    if not state or not state.get("tourist_ops") or "tourist_idx" not in state: return await event.bot.send_callback(cb.callback_id, notification=" ")
     t = state["tourist_ops"][state["tourist_idx"]]
     try:
         sheet = tourist_get_sheet()
@@ -5586,7 +5586,7 @@ async def cb_tourist_save(event: MessageCallback):
                 [CallbackButton(text="Пропустить", payload="tourist_skip")],
             ])
             await msg.answer(text=f"<b>Турист уже есть:</b>\n{existing[1] if len(existing)>1 else ''}, {existing[3] if len(existing)>3 else ''}", attachments=[kb])
-            await event.bot.send_callback(cb.callback_id); return
+            await event.bot.send_callback(cb.callback_id, notification=" "); return
 
         row = [t.get("date",""), t.get("name",""), safe_phone(t.get("phone","")),
                t.get("destination",""), t.get("dates",""), t.get("budget",""),
@@ -5599,9 +5599,9 @@ async def cb_tourist_save(event: MessageCallback):
         else:
             user_states.pop(uid, None)
             await msg.answer(text="Все туристы записаны!", attachments=[KB_TOURISTS])
-        await event.bot.send_callback(cb.callback_id)
+        await event.bot.send_callback(cb.callback_id, notification=" ")
     except Exception as e:
-        logger.error(f"Tourist save: {e}"); await event.bot.send_callback(cb.callback_id)
+        logger.error(f"Tourist save: {e}"); await event.bot.send_callback(cb.callback_id, notification=" ")
 
 @router.message_callback(F.callback.payload == "tourist_supplement")
 async def cb_tourist_supplement(event: MessageCallback):
@@ -5609,10 +5609,10 @@ async def cb_tourist_supplement(event: MessageCallback):
     msg = event.message
     uid = cb.user.user_id
     state = user_states.get(uid)
-    if not state or not state.get("tourist_ops") or "tourist_idx" not in state: return await event.bot.send_callback(cb.callback_id)
+    if not state or not state.get("tourist_ops") or "tourist_idx" not in state: return await event.bot.send_callback(cb.callback_id, notification=" ")
     t = state["tourist_ops"][state["tourist_idx"]]
     dup_row = state.get("_dup_row")
-    if not dup_row: return await event.bot.send_callback(cb.callback_id)
+    if not dup_row: return await event.bot.send_callback(cb.callback_id, notification=" ")
     try:
         sheet = tourist_get_sheet()
         existing = sheet.row_values(dup_row)
@@ -5638,9 +5638,9 @@ async def cb_tourist_supplement(event: MessageCallback):
         else:
             user_states.pop(uid, None)
             await msg.answer(text="Готово!", attachments=[KB_TOURISTS])
-        await event.bot.send_callback(cb.callback_id)
+        await event.bot.send_callback(cb.callback_id, notification=" ")
     except Exception as e:
-        logger.error(f"Tourist supplement: {e}"); await event.bot.send_callback(cb.callback_id)
+        logger.error(f"Tourist supplement: {e}"); await event.bot.send_callback(cb.callback_id, notification=" ")
 
 @router.message_callback(F.callback.payload == "tourist_force_save")
 async def cb_tourist_force(event: MessageCallback):
@@ -5648,7 +5648,7 @@ async def cb_tourist_force(event: MessageCallback):
     msg = event.message
     uid = cb.user.user_id
     state = user_states.get(uid)
-    if not state or not state.get("tourist_ops") or "tourist_idx" not in state: return await event.bot.send_callback(cb.callback_id)
+    if not state or not state.get("tourist_ops") or "tourist_idx" not in state: return await event.bot.send_callback(cb.callback_id, notification=" ")
     t = state["tourist_ops"][state["tourist_idx"]]
     state.pop("_dup_row", None)
     try:
@@ -5664,9 +5664,9 @@ async def cb_tourist_force(event: MessageCallback):
         else:
             user_states.pop(uid, None)
             await msg.answer(text="Готово!", attachments=[KB_TOURISTS])
-        await event.bot.send_callback(cb.callback_id)
+        await event.bot.send_callback(cb.callback_id, notification=" ")
     except Exception as e:
-        await event.bot.send_callback(cb.callback_id)
+        await event.bot.send_callback(cb.callback_id, notification=" ")
 
 @router.message_callback(F.callback.payload == "tourist_skip")
 async def cb_tourist_skip(event: MessageCallback):
@@ -5674,7 +5674,7 @@ async def cb_tourist_skip(event: MessageCallback):
     msg = event.message
     uid = cb.user.user_id
     state = user_states.get(uid)
-    if not state: return await event.bot.send_callback(cb.callback_id)
+    if not state: return await event.bot.send_callback(cb.callback_id, notification=" ")
     state.pop("_dup_row", None)
     state["tourist_idx"] = state.get("tourist_idx", 0) + 1
     if state.get("tourist_idx", 0) < len(state.get("tourist_ops", [])):
@@ -5682,7 +5682,7 @@ async def cb_tourist_skip(event: MessageCallback):
     else:
         user_states.pop(uid, None)
         await msg.answer(text="Готово!", attachments=[KB_TOURISTS])
-    await event.bot.send_callback(cb.callback_id)
+    await event.bot.send_callback(cb.callback_id, notification=" ")
 
 async def tourist_show_all(msg):
     tourists = tourist_get_all()
@@ -5741,18 +5741,18 @@ async def cb_tourist_status(event: MessageCallback):
     msg = event.message
     uid = cb.user.user_id
     state = user_states.get(uid)
-    if not state: return await event.bot.send_callback(cb.callback_id)
+    if not state: return await event.bot.send_callback(cb.callback_id, notification=" ")
     row_num = state.get("_status_row")
-    if not row_num: return await event.bot.send_callback(cb.callback_id)
+    if not row_num: return await event.bot.send_callback(cb.callback_id, notification=" ")
     new_status = cb.payload[4:]
     try:
         sheet = tourist_get_sheet()
         sheet.update_cell(row_num, 9, new_status)
         user_states.pop(uid, None)
         await msg.edit(text=f"Статус изменён на: {new_status}")
-        await event.bot.send_callback(cb.callback_id)
+        await event.bot.send_callback(cb.callback_id, notification=" ")
     except Exception as e:
-        await event.bot.send_callback(cb.callback_id)
+        await event.bot.send_callback(cb.callback_id, notification=" ")
 
 @router.message_callback(F.payload.startswith("tfilter_"))
 async def cb_tourist_filter(event: MessageCallback):
@@ -5765,7 +5765,7 @@ async def cb_tourist_filter(event: MessageCallback):
         tourists = [t for t in tourists if t.get("status","").lower() == status.lower()]
     if not tourists:
         await msg.answer(text=f"Нет туристов со статусом «{status}».", attachments=[KB_TOURISTS])
-        await event.bot.send_callback(cb.callback_id); return
+        await event.bot.send_callback(cb.callback_id, notification=" "); return
     status_icons = {"новый":"⚪","в работе":"🔵","забронирован":"🟡","оплачен":"🟢","завершён":"✅"}
     lines = [f"<b>Туристы — {status}</b> ({len(tourists)})\n"]
     for t in tourists[-20:]:
@@ -5783,7 +5783,7 @@ async def cb_tourist_filter(event: MessageCallback):
     uid = cb.user.user_id
     user_states[uid] = {"table": "tourists", "step": "tourist_status_search"}
     await msg.answer(text=text, attachments=[KB_TOURISTS])
-    await event.bot.send_callback(cb.callback_id)
+    await event.bot.send_callback(cb.callback_id, notification=" ")
 
 async def tourist_portrait(msg, query):
     """Психологический портрет клиента."""
@@ -5902,20 +5902,20 @@ async def cb_tourist_edit_field(event: MessageCallback):
     uid = cb.user.user_id
     field = cb.payload[6:]  # destination, dates, etc.
     state = user_states.get(uid)
-    if not state or not state.get("_edit_row"): return await event.bot.send_callback(cb.callback_id)
+    if not state or not state.get("_edit_row"): return await event.bot.send_callback(cb.callback_id, notification=" ")
     if field == "status":
         kb = _make_kb([
             [CallbackButton(text=s, payload=f"tsetst_{s}")] for s in TOURIST_STATUSES
         ] + [RESET_ROW])
         await msg.answer(text="Новый статус:", attachments=[kb])
-        await event.bot.send_callback(cb.callback_id); return
+        await event.bot.send_callback(cb.callback_id, notification=" "); return
     user_states[uid]["step"] = "tourist_edit_field"
     user_states[uid]["_edit_field"] = field
     labels = {"name":"ФИО","phone":"Контакт","destination":"Направление","dates":"Даты",
               "budget":"Бюджет","group":"Состав","wishes":"Пожелания","comments":"Комментарии","source":"Источник"}
     current = state.get("_edit_tourist",{}).get(field,"") or "—"
     await msg.answer(text=f"Текущее: {current}\n\nНовое значение для «{labels.get(field,field)}»:")
-    await event.bot.send_callback(cb.callback_id)
+    await event.bot.send_callback(cb.callback_id, notification=" ")
 
 @router.message_callback(F.payload.startswith("tsetst_"))
 async def cb_tourist_set_status(event: MessageCallback):
@@ -5923,15 +5923,15 @@ async def cb_tourist_set_status(event: MessageCallback):
     msg = event.message
     uid = cb.user.user_id
     state = user_states.get(uid)
-    if not state or not state.get("_edit_row"): return await event.bot.send_callback(cb.callback_id)
+    if not state or not state.get("_edit_row"): return await event.bot.send_callback(cb.callback_id, notification=" ")
     new_status = cb.payload[7:]
     try:
         sheet = tourist_get_sheet()
         sheet.update_cell(state["_edit_row"], 9, new_status)
         await msg.edit(text=f"Статус изменён на: {new_status}")
-        user_states.pop(uid, None); await event.bot.send_callback(cb.callback_id)
+        user_states.pop(uid, None); await event.bot.send_callback(cb.callback_id, notification=" ")
     except Exception as e:
-        await event.bot.send_callback(cb.callback_id)
+        await event.bot.send_callback(cb.callback_id, notification=" ")
 
 async def tourist_edit_apply(msg, uid, new_value):
     """Применить редактирование поля туриста."""
@@ -6024,7 +6024,7 @@ async def cb_chat_save(event: MessageCallback):
     msg = event.message
     uid = cb.user.user_id
     state = user_states.get(uid)
-    if not state or not state.get("_chat_tourist"): return await event.bot.send_callback(cb.callback_id)
+    if not state or not state.get("_chat_tourist"): return await event.bot.send_callback(cb.callback_id, notification=" ")
     t = state["_chat_tourist"]
     try:
         sheet = tourist_get_sheet()
@@ -6067,10 +6067,10 @@ async def cb_chat_save(event: MessageCallback):
             await msg.edit(text=f"{t.get('name','')} записан в базу!")
 
         user_states.pop(uid, None)
-        await event.bot.send_callback(cb.callback_id)
+        await event.bot.send_callback(cb.callback_id, notification=" ")
     except Exception as e:
         logger.error(f"Chat save: {e}")
-        await event.bot.send_callback(cb.callback_id)
+        await event.bot.send_callback(cb.callback_id, notification=" ")
 
 @router.message_callback(F.callback.payload == "chat_skip")
 async def cb_chat_skip(event: MessageCallback):
@@ -6078,7 +6078,7 @@ async def cb_chat_skip(event: MessageCallback):
     msg = event.message
     user_states.pop(cb.user.user_id, None)
     await msg.edit(text="Не сохранено.")
-    await event.bot.send_callback(cb.callback_id)
+    await event.bot.send_callback(cb.callback_id, notification=" ")
 
 @router.message_callback(F.payload.startswith("ce_"))
 async def cb_chat_edit_field(event: MessageCallback):
@@ -6088,7 +6088,7 @@ async def cb_chat_edit_field(event: MessageCallback):
     uid = cb.user.user_id
     field = cb.payload[3:]  # name, phone, destination, source, status
     state = user_states.get(uid)
-    if not state or not state.get("_chat_tourist"): return await event.bot.send_callback(cb.callback_id)
+    if not state or not state.get("_chat_tourist"): return await event.bot.send_callback(cb.callback_id, notification=" ")
 
     # Статус — показываем inline-кнопки вместо текстового ввода
     if field == "status":
@@ -6096,13 +6096,13 @@ async def cb_chat_edit_field(event: MessageCallback):
             [CallbackButton(text=s, payload=f"ces_{s}")] for s in TOURIST_STATUSES
         ])
         await msg.answer(text="Выбери статус:", attachments=[kb])
-        await event.bot.send_callback(cb.callback_id); return
+        await event.bot.send_callback(cb.callback_id, notification=" "); return
 
     labels = {"name":"ФИО","phone":"Контакт","destination":"Направление","source":"Источник"}
     current = state["_chat_tourist"].get(field, "") or "—"
     user_states[uid]["step"] = f"chat_edit_{field}"
     await msg.answer(text=f"Текущее: {current}\n\nНовое значение для «{labels.get(field,field)}»:")
-    await event.bot.send_callback(cb.callback_id)
+    await event.bot.send_callback(cb.callback_id, notification=" ")
 
 @router.message_callback(F.payload.startswith("ces_"))
 async def cb_chat_set_status(event: MessageCallback):
@@ -6111,7 +6111,7 @@ async def cb_chat_set_status(event: MessageCallback):
     """Установить статус перед сохранением из экспорта чата."""
     uid = cb.user.user_id
     state = user_states.get(uid)
-    if not state or not state.get("_chat_tourist"): return await event.bot.send_callback(cb.callback_id)
+    if not state or not state.get("_chat_tourist"): return await event.bot.send_callback(cb.callback_id, notification=" ")
     new_status = cb.payload[4:]
     state["_chat_tourist"]["status"] = new_status
     await msg.edit(text=f"Статус: {new_status}")
@@ -6127,7 +6127,7 @@ async def cb_chat_set_status(event: MessageCallback):
         [CallbackButton(text="Не сохранять", payload="chat_skip")],
     ])
     await msg.answer(text="\n".join(card_lines), attachments=[kb])
-    await event.bot.send_callback(cb.callback_id)
+    await event.bot.send_callback(cb.callback_id, notification=" ")
 
 # ==================== ЗАДАЧИ: ФУНКЦИИ ====================
 
@@ -6276,11 +6276,11 @@ async def cb_tlist_archive(event: MessageCallback):
     if not done:
         try: await msg.edit(text="Архив пуст — выполненных задач нет.")
         except: pass
-        await event.bot.send_callback(cb.callback_id); return
+        await event.bot.send_callback(cb.callback_id, notification=" "); return
     text = _task_render_list(done[-30:], "Архив (выполненные и отменённые)")
     try: await msg.edit(text=text, attachments=[_task_list_kb(done[-30:], "archive")])
     except Exception as e: logger.warning(f"tlist_archive: {e}")
-    await event.bot.send_callback(cb.callback_id)
+    await event.bot.send_callback(cb.callback_id, notification=" ")
 
 @router.message_callback(F.callback.payload == "tlist_active")
 async def cb_tlist_active(event: MessageCallback):
@@ -6291,11 +6291,11 @@ async def cb_tlist_active(event: MessageCallback):
     if not active:
         try: await msg.edit(text="Нет активных задач.")
         except: pass
-        await event.bot.send_callback(cb.callback_id); return
+        await event.bot.send_callback(cb.callback_id, notification=" "); return
     text = _task_render_list(active, "Активные задачи")
     try: await msg.edit(text=text, attachments=[_task_list_kb(active, "active")])
     except Exception as e: logger.warning(f"tlist_active: {e}")
-    await event.bot.send_callback(cb.callback_id)
+    await event.bot.send_callback(cb.callback_id, notification=" ")
 
 @router.message_callback(F.payload.startswith("topen_"))
 async def cb_task_open(event: MessageCallback):
@@ -6303,60 +6303,60 @@ async def cb_task_open(event: MessageCallback):
     msg = event.message
     parts = cb.payload.split("_")
     try: row_num = int(parts[1])
-    except (ValueError, IndexError): await event.bot.send_callback(cb.callback_id); return
+    except (ValueError, IndexError): await event.bot.send_callback(cb.callback_id, notification=" "); return
     t = task_get_by_row(row_num)
     if not t:
-        await event.bot.send_callback(cb.callback_id); return
+        await event.bot.send_callback(cb.callback_id, notification=" "); return
     try: await msg.edit(text=_task_card_text(t), attachments=[_task_card_kb(row_num, t.get(status,))])
     except Exception as e: logger.warning(f"task open: {e}")
-    await event.bot.send_callback(cb.callback_id)
+    await event.bot.send_callback(cb.callback_id, notification=" ")
 
 @router.message_callback(F.payload.startswith("tdone_"))
 async def cb_task_done_btn(event: MessageCallback):
     cb = event.callback
     msg = event.message
     try: row_num = int(cb.payload[6:])
-    except ValueError: await event.bot.send_callback(cb.callback_id); return
+    except ValueError: await event.bot.send_callback(cb.callback_id, notification=" "); return
     try:
         sheet = task_get_sheet()
         sheet.update_cell(row_num, 5, "выполнена")
     except Exception as e:
-        await event.bot.send_callback(cb.callback_id); return
+        await event.bot.send_callback(cb.callback_id, notification=" "); return
     t = task_get_by_row(row_num)
     if t:
         try: await msg.edit(text=_task_card_text(t), attachments=[_task_card_kb(row_num, t.get(status,))])
         except: pass
-    await event.bot.send_callback(cb.callback_id)
+    await event.bot.send_callback(cb.callback_id, notification=" ")
 
 @router.message_callback(F.payload.startswith("tundo_"))
 async def cb_task_undo(event: MessageCallback):
     cb = event.callback
     msg = event.message
     try: row_num = int(cb.payload[6:])
-    except ValueError: await event.bot.send_callback(cb.callback_id); return
+    except ValueError: await event.bot.send_callback(cb.callback_id, notification=" "); return
     try:
         sheet = task_get_sheet()
         sheet.update_cell(row_num, 5, "новая")
     except Exception as e:
-        await event.bot.send_callback(cb.callback_id); return
+        await event.bot.send_callback(cb.callback_id, notification=" "); return
     t = task_get_by_row(row_num)
     if t:
         try: await msg.edit(text=_task_card_text(t), attachments=[_task_card_kb(row_num, t.get(status,))])
         except: pass
-    await event.bot.send_callback(cb.callback_id)
+    await event.bot.send_callback(cb.callback_id, notification=" ")
 
 @router.message_callback(F.payload.startswith("townm_"))
 async def cb_task_owner_menu(event: MessageCallback):
     cb = event.callback
     msg = event.message
     try: row_num = int(cb.payload[6:])
-    except ValueError: await event.bot.send_callback(cb.callback_id); return
+    except ValueError: await event.bot.send_callback(cb.callback_id, notification=" "); return
     rows = [[CallbackButton(text=p, payload=f"town_{row_num}_{p}")] for p in TASK_PEOPLE]
     rows.append([CallbackButton(text="— Снять —", payload=f"town_{row_num}_")])
     rows.append([CallbackButton(text="◀ Отмена", payload=f"topen_{row_num}_all")])
     try: await msg.edit(attachments=[_make_kb(rows)])
     except Exception as e: logger.warning(f"townm: {e}")
-    await event.bot.send_callback(cb.callback_id)
+    await event.bot.send_callback(cb.callback_id, notification=" ")
 
 @router.message_callback(F.payload.startswith("town_"))
 async def cb_task_owner_set(event: MessageCallback):
@@ -6365,30 +6365,30 @@ async def cb_task_owner_set(event: MessageCallback):
     payload = cb.payload[5:]
     row_str, _, person = payload.partition("_")
     try: row_num = int(row_str)
-    except ValueError: await event.bot.send_callback(cb.callback_id); return
+    except ValueError: await event.bot.send_callback(cb.callback_id, notification=" "); return
     try:
         sheet = task_get_sheet()
         sheet.update_cell(row_num, 3, person)
     except Exception as e:
-        await event.bot.send_callback(cb.callback_id); return
+        await event.bot.send_callback(cb.callback_id, notification=" "); return
     t = task_get_by_row(row_num)
     if t:
         try: await msg.edit(text=_task_card_text(t), attachments=[_task_card_kb(row_num, t.get(status,))])
         except: pass
-    await event.bot.send_callback(cb.callback_id)
+    await event.bot.send_callback(cb.callback_id, notification=" ")
 
 @router.message_callback(F.payload.startswith("tstm_"))
 async def cb_task_status_menu(event: MessageCallback):
     cb = event.callback
     msg = event.message
     try: row_num = int(cb.payload[5:])
-    except ValueError: await event.bot.send_callback(cb.callback_id); return
+    except ValueError: await event.bot.send_callback(cb.callback_id, notification=" "); return
     statuses = ["новая","в работе","выполнена","отменена"]
     rows = [[CallbackButton(text=f"{TASK_STATUS_ICON[s]} {s}", payload=f"tst_{row_num}_{s}")] for s in statuses]
     rows.append([CallbackButton(text="◀ Отмена", payload=f"topen_{row_num}_all")])
     try: await msg.edit(attachments=[_make_kb(rows)])
     except Exception as e: logger.warning(f"tstm: {e}")
-    await event.bot.send_callback(cb.callback_id)
+    await event.bot.send_callback(cb.callback_id, notification=" ")
 
 @router.message_callback(F.payload.startswith("tst_"))
 async def cb_task_status_set(event: MessageCallback):
@@ -6397,37 +6397,37 @@ async def cb_task_status_set(event: MessageCallback):
     payload = cb.payload[4:]
     row_str, _, status = payload.partition("_")
     try: row_num = int(row_str)
-    except ValueError: await event.bot.send_callback(cb.callback_id); return
+    except ValueError: await event.bot.send_callback(cb.callback_id, notification=" "); return
     try:
         sheet = task_get_sheet()
         sheet.update_cell(row_num, 5, status)
     except Exception as e:
-        await event.bot.send_callback(cb.callback_id); return
+        await event.bot.send_callback(cb.callback_id, notification=" "); return
     t = task_get_by_row(row_num)
     if t:
         try: await msg.edit(text=_task_card_text(t), attachments=[_task_card_kb(row_num, t.get(status,))])
         except: pass
-    await event.bot.send_callback(cb.callback_id)
+    await event.bot.send_callback(cb.callback_id, notification=" ")
 
 @router.message_callback(F.payload.startswith("tapp_"))
 async def cb_task_append(event: MessageCallback):
     cb = event.callback
     msg = event.message
     try: row_num = int(cb.payload[5:])
-    except ValueError: await event.bot.send_callback(cb.callback_id); return
+    except ValueError: await event.bot.send_callback(cb.callback_id, notification=" "); return
     user_states[cb.user.user_id] = {"table": "tasks", "step": "task_append", "row_num": row_num}
     await msg.answer(text="Что дописать к тексту задачи? (отдельной строкой добавится в конец)")
-    await event.bot.send_callback(cb.callback_id)
+    await event.bot.send_callback(cb.callback_id, notification=" ")
 
 @router.message_callback(F.payload.startswith("tcom_"))
 async def cb_task_comment(event: MessageCallback):
     cb = event.callback
     msg = event.message
     try: row_num = int(cb.payload[5:])
-    except ValueError: await event.bot.send_callback(cb.callback_id); return
+    except ValueError: await event.bot.send_callback(cb.callback_id, notification=" "); return
     user_states[cb.user.user_id] = {"table": "tasks", "step": "task_comment", "row_num": row_num}
     await msg.answer(text="Комментарий к задаче (заменит предыдущий, чтобы добавить — повтори текст вручную):")
-    await event.bot.send_callback(cb.callback_id)
+    await event.bot.send_callback(cb.callback_id, notification=" ")
 
 @router.message_callback(F.payload.startswith("taskown_"))
 async def cb_task_owner_filter(event: MessageCallback):
@@ -6442,11 +6442,11 @@ async def cb_task_owner_filter(event: MessageCallback):
         active = [t for t in active if owner.lower() in (t.get("owner","") or "").lower()]
     if not active:
         await msg.answer(text=f"Нет активных задач для «{owner}».", attachments=[KB_TASKS])
-        await event.bot.send_callback(cb.callback_id); return
+        await event.bot.send_callback(cb.callback_id, notification=" "); return
     title = f"Задачи — {owner}" if owner != "все" else "Все активные"
     text = _task_render_list(active, title)
     await msg.answer(text=text, attachments=[_task_list_kb(active, "active")])
-    await event.bot.send_callback(cb.callback_id)
+    await event.bot.send_callback(cb.callback_id, notification=" ")
 
 async def task_complete(msg, query):
     """Старый текстовый сценарий — на случай если кто-то напишет команду текстом."""
@@ -7166,17 +7166,17 @@ async def cb_subs_cat(event: MessageCallback):
         # Последняя строка с данными
         last_row = len(all_vals)
         if last_row < 2:
-            return await event.bot.send_callback(cb.callback_id)
+            return await event.bot.send_callback(cb.callback_id, notification=" ")
         sh.update_cell(last_row, 3, new_cat)  # колонка 3 = Категория
         old_text = (msg.body.text or "") if msg.body else ""
         # Убираем строку «изменить категорию:» и кнопки
         new_text = re.sub(r'\nизменить категорию:.*', '', old_text, flags=re.DOTALL)
         new_text = new_text.rstrip() + f"\n\nкатегория обновлена: <b>{new_cat}</b>"
         await msg.edit(text=new_text, attachments=[None])
-        await event.bot.send_callback(cb.callback_id)
+        await event.bot.send_callback(cb.callback_id, notification=" ")
     except Exception as e:
         logger.error(f"Subs cat change: {e}")
-        await event.bot.send_callback(cb.callback_id)
+        await event.bot.send_callback(cb.callback_id, notification=" ")
 
 
 # ==================== СТРАНЫ: МОДУЛЬ ====================
@@ -7460,11 +7460,11 @@ async def cb_travel_edit(event: MessageCallback):
     }
     info = field_map.get(cb.payload)
     if not info:
-        return await event.bot.send_callback(cb.callback_id)
+        return await event.bot.send_callback(cb.callback_id, notification=" ")
     user_states[uid]["_edit_field"] = info[0]
     user_states[uid]["step"] = "travel_edit_field"
     await msg.answer(info[1])
-    await event.bot.send_callback(cb.callback_id)
+    await event.bot.send_callback(cb.callback_id, notification=" ")
 
 async def travel_edit_field(msg, uid: int, text: str):
     if text.lower().strip() == "отмена":
@@ -7549,14 +7549,14 @@ async def cb_trip_new_today(event: MessageCallback):
     uid = cb.user.user_id
     state = user_states.get(uid)
     if not state or state.get("step") != "trip_new_date_start":
-        return await event.bot.send_callback(cb.callback_id)
+        return await event.bot.send_callback(cb.callback_id, notification=" ")
     state.setdefault("_new_trip", {})["date_start"] = datetime.date.today().strftime("%d.%m.%Y")
     state["step"] = "trip_new_date_end"
     kb = _make_kb([
         [CallbackButton(text="— (открытая поездка)", payload="trip_new_open")]
     ])
     await msg.answer(text=f"Старт: <b>{state['_new_trip']['date_start']}</b>\n\n🗓 <b>Когда заканчивается?</b>\nНапиши дату или нажми «—».", attachments=[kb])
-    await event.bot.send_callback(cb.callback_id)
+    await event.bot.send_callback(cb.callback_id, notification=" ")
 
 
 @router.message_callback(F.callback.payload == "trip_new_open")
@@ -7566,11 +7566,11 @@ async def cb_trip_new_open(event: MessageCallback):
     uid = cb.user.user_id
     state = user_states.get(uid)
     if not state or state.get("step") != "trip_new_date_end":
-        return await event.bot.send_callback(cb.callback_id)
+        return await event.bot.send_callback(cb.callback_id, notification=" ")
     state.setdefault("_new_trip", {})["date_end"] = ""
     state["step"] = "trip_new_places"
     await msg.answer(text="🌍 <b>Страна и города</b> через запятую:\n«Турция, Стамбул»")
-    await event.bot.send_callback(cb.callback_id)
+    await event.bot.send_callback(cb.callback_id, notification=" ")
 
 
 # ==================== РАСХОДЫ ПОЕЗДКИ ====================
@@ -7985,12 +7985,12 @@ async def cb_journeys_nav(event: MessageCallback):
     rest = cb.payload[6:]                 # '<kind>_<view>'
     kind, _, view = rest.partition("_")
     if kind not in ("a", "t") or not view:
-        return await event.bot.send_callback(cb.callback_id)
+        return await event.bot.send_callback(cb.callback_id, notification=" ")
     try:
         await msg.edit(attachments=[build_journeys_kb(kind, view)])
     except Exception:
         pass
-    await event.bot.send_callback(cb.callback_id)
+    await event.bot.send_callback(cb.callback_id, notification=" ")
 
 
 @router.message_callback(F.payload.startswith("ejp_"))
@@ -8002,10 +8002,10 @@ async def cb_expense_pick_journey(event: MessageCallback):
     try:
         idx = int(cb.payload[4:])
     except Exception:
-        return await event.bot.send_callback(cb.callback_id)
+        return await event.bot.send_callback(cb.callback_id, notification=" ")
     journeys = build_journeys()
     if not (0 <= idx < len(journeys)):
-        return await event.bot.send_callback(cb.callback_id)
+        return await event.bot.send_callback(cb.callback_id, notification=" ")
     j = journeys[idx]
     user_states[uid] = {
         "table": "travel", "step": "expense_add",
@@ -8019,7 +8019,7 @@ async def cb_expense_pick_journey(event: MessageCallback):
         f"<i>«500 за такси»</i>\n\n"
         f"Чтобы поменять путешествие — нажми «💸 Добавить расход» ещё раз."
     )
-    await event.bot.send_callback(cb.callback_id)
+    await event.bot.send_callback(cb.callback_id, notification=" ")
 
 
 @router.message_callback(F.payload.startswith("epick_"))
@@ -8030,11 +8030,11 @@ async def cb_expense_pick(event: MessageCallback):
     try:
         row = int(cb.payload.split("_", 1)[1])
     except Exception:
-        return await event.bot.send_callback(cb.callback_id)
+        return await event.bot.send_callback(cb.callback_id, notification=" ")
     trips = travel_get_all()
     trip = next((t for t in trips if t["_row"] == row), None)
     if not trip:
-        return await event.bot.send_callback(cb.callback_id)
+        return await event.bot.send_callback(cb.callback_id, notification=" ")
     user_states[uid] = {
         "table": "travel", "step": "expense_add",
         "_exp_trip_row": row, "_exp_trip_key": trip_make_key(trip),
@@ -8047,7 +8047,7 @@ async def cb_expense_pick(event: MessageCallback):
         f"<i>«500 за такси»</i>\n\n"
         f"Чтобы поменять поездку — нажми «💸 Добавить расход» ещё раз."
     )
-    await event.bot.send_callback(cb.callback_id)
+    await event.bot.send_callback(cb.callback_id, notification=" ")
 
 
 # -------- handler: пользователь пишет строку расхода --------
@@ -8185,19 +8185,19 @@ async def cb_expense_category(event: MessageCallback):
         row = int(row_str); idx = int(idx_str)
         new_cat = EXPENSE_CATEGORIES[idx]
     except Exception:
-        return await event.bot.send_callback(cb.callback_id)
+        return await event.bot.send_callback(cb.callback_id, notification=" ")
     try:
         sh = expenses_get_sheet()
         sh.update_cell(row, 3, new_cat)  # колонка C — категория
     except Exception as e:
         logger.error(f"Expense recat: {e}")
-        return await event.bot.send_callback(cb.callback_id)
+        return await event.bot.send_callback(cb.callback_id, notification=" ")
     try:
         await msg.edit(attachments=[None])
     except Exception:
         pass
     await msg.answer(text=f"↻ категория: <b>{new_cat}</b>")
-    await event.bot.send_callback(cb.callback_id)
+    await event.bot.send_callback(cb.callback_id, notification=" ")
 
 
 # -------- UI: итоги по поездке --------
@@ -8265,19 +8265,19 @@ async def cb_expense_delete(event: MessageCallback):
     try:
         row = int(cb.payload[5:])
     except Exception:
-        return await event.bot.send_callback(cb.callback_id)
+        return await event.bot.send_callback(cb.callback_id, notification=" ")
     try:
         sh = expenses_get_sheet()
         sh.delete_rows(row)
     except Exception as e:
         logger.error(f"Expense delete row {row}: {e}")
-        return await event.bot.send_callback(cb.callback_id)
+        return await event.bot.send_callback(cb.callback_id, notification=" ")
     try:
         await msg.edit(attachments=[None])
     except Exception:
         pass
     await msg.answer(text="🗑 Расход удалён.")
-    await event.bot.send_callback(cb.callback_id)
+    await event.bot.send_callback(cb.callback_id, notification=" ")
 
 
 @router.message_callback(F.payload.startswith("emove_"))
@@ -8290,7 +8290,7 @@ async def cb_expense_move(event: MessageCallback):
         row_num = int(parts[1])
         cat_i = int(parts[2])
     except Exception:
-        return await event.bot.send_callback(cb.callback_id)
+        return await event.bot.send_callback(cb.callback_id, notification=" ")
     cur_cat = EXPENSE_CATEGORIES[cat_i] if 0 <= cat_i < len(EXPENSE_CATEGORIES) else "?"
     # кнопки — все категории кроме текущей
     btns = [[CallbackButton(
@@ -8301,7 +8301,7 @@ async def cb_expense_move(event: MessageCallback):
         f"Переместить из <b>{cur_cat}</b> в:",
         attachments=[_make_kb(btns)]
     )
-    await event.bot.send_callback(cb.callback_id)
+    await event.bot.send_callback(cb.callback_id, notification=" ")
 
 
 @router.message_callback(F.payload.startswith("ecatview_"))
@@ -8313,10 +8313,10 @@ async def cb_expense_cat_view(event: MessageCallback):
         _, trip_str, cat_i_str = cb.payload.split("_")
         trip_idx = int(trip_str); cat_i = int(cat_i_str)
     except Exception:
-        return await event.bot.send_callback(cb.callback_id)
+        return await event.bot.send_callback(cb.callback_id, notification=" ")
     journeys = build_journeys()
     if not (0 <= trip_idx < len(journeys)):
-        return await event.bot.send_callback(cb.callback_id)
+        return await event.bot.send_callback(cb.callback_id, notification=" ")
     j = journeys[trip_idx]
     keys = set(j["keys"])
     all_exps = [e for e in expenses_get_all() if e.get("trip_key") in keys]
@@ -8326,11 +8326,11 @@ async def cb_expense_cat_view(event: MessageCallback):
         [e.get("category","") for e in all_exps if e.get("category","") not in EXPENSE_CATEGORIES]
     ))
     if not (0 <= cat_i < len(by_cat_list)):
-        return await event.bot.send_callback(cb.callback_id)
+        return await event.bot.send_callback(cb.callback_id, notification=" ")
     cat = by_cat_list[cat_i]
     cat_exps = [(i, e) for i, e in enumerate(all_exps) if e.get("category") == cat]
     if not cat_exps:
-        return await event.bot.send_callback(cb.callback_id)
+        return await event.bot.send_callback(cb.callback_id, notification=" ")
 
     lines = [f"<b>✏️ {cat}</b> — {journey_label(j)}\n"]
     kb_rows = []
@@ -8351,7 +8351,7 @@ async def cb_expense_cat_view(event: MessageCallback):
         "\n".join(lines) + "\n\n<i>Тапни на расход чтобы переместить в другую категорию</i>",
         attachments=[_make_kb(kb_rows)] if kb_rows else None
     )
-    await event.bot.send_callback(cb.callback_id)
+    await event.bot.send_callback(cb.callback_id, notification=" ")
 
 
 @router.message_callback(F.payload.startswith("etj_"))
@@ -8361,15 +8361,15 @@ async def cb_expense_total_journey(event: MessageCallback):
     try:
         idx = int(cb.payload[4:])
     except Exception:
-        return await event.bot.send_callback(cb.callback_id)
+        return await event.bot.send_callback(cb.callback_id, notification=" ")
     journeys = build_journeys()
     if not (0 <= idx < len(journeys)):
-        return await event.bot.send_callback(cb.callback_id)
+        return await event.bot.send_callback(cb.callback_id, notification=" ")
     j = journeys[idx]
     keys = set(j["keys"])
     exps = [e for e in expenses_get_all() if e.get("trip_key") in keys]
     await _send_expense_totals(cb.message, journey_label(j), exps, trip_idx=idx)
-    await event.bot.send_callback(cb.callback_id)
+    await event.bot.send_callback(cb.callback_id, notification=" ")
 
 
 def _render_trip_pie_png(by_cat: dict, label: str, total_rub: float) -> bytes | None:
@@ -9244,7 +9244,7 @@ async def cb_inst_finish(event: MessageCallback):
     uid = cb.user.user_id
     draft = instructions_draft.get(uid)
     if not draft or not draft.get("steps"):
-        await event.bot.send_callback(cb.callback_id); return
+        await event.bot.send_callback(cb.callback_id, notification=" "); return
     title = draft.get("title", "Инструкция")
     await msg.edit(text=f"⏳ Создаю документ «{title}»... Это займёт несколько секунд.")
     try:
@@ -9254,7 +9254,7 @@ async def cb_inst_finish(event: MessageCallback):
         logger.error(f"inst_finish err: {err}")
         instructions_draft.pop(uid, None); user_states.pop(uid, None)
         await msg.answer(text=f"❌ Ошибка при создании:\n<code>{err.replace('<','&lt;').replace('>','&gt;')}</code>", attachments=[KB_INSTRUCTIONS])
-        await event.bot.send_callback(cb.callback_id); return
+        await event.bot.send_callback(cb.callback_id, notification=" "); return
     instructions_draft.pop(uid, None)
     user_states.pop(uid, None)
     if doc_url:
@@ -9265,7 +9265,7 @@ async def cb_inst_finish(event: MessageCallback):
         await msg.answer(text="Что дальше?", attachments=[KB_INSTRUCTIONS])
     else:
         await msg.answer(text="❌ Не удалось создать документ.", attachments=[KB_INSTRUCTIONS])
-    await event.bot.send_callback(cb.callback_id)
+    await event.bot.send_callback(cb.callback_id, notification=" ")
 
 @router.message_callback(F.callback.payload == "inst_cancel")
 async def cb_inst_cancel(event: MessageCallback):
@@ -9276,7 +9276,7 @@ async def cb_inst_cancel(event: MessageCallback):
     user_states.pop(uid, None)
     await msg.edit(text="Отменено.")
     await msg.answer(text="Что дальше?", attachments=[KB_INSTRUCTIONS])
-    await event.bot.send_callback(cb.callback_id)
+    await event.bot.send_callback(cb.callback_id, notification=" ")
 
 # ==================== ЛИЧНОЕ: ФУНКЦИИ ====================
 
@@ -9346,9 +9346,9 @@ async def cb_personal_set_cat(event: MessageCallback):
         if last_row >= 2:
             sheet.update_cell(last_row, 2, new_cat)
         await msg.edit(text=f"✅ Категория: <b>{new_cat}</b>")
-        await event.bot.send_callback(cb.callback_id)
+        await event.bot.send_callback(cb.callback_id, notification=" ")
     except Exception as e:
-        await event.bot.send_callback(cb.callback_id)
+        await event.bot.send_callback(cb.callback_id, notification=" ")
 
 PERSONAL_PAGE_SIZE = 20
 
@@ -9398,11 +9398,11 @@ async def cb_personal_filter(event: MessageCallback):
         active = [i for i in active if i.get("category","") == cat]
     if not active:
         await msg.answer(text=f"Нет записей в категории «{cat}».", attachments=[KB_PERSONAL])
-        await event.bot.send_callback(cb.callback_id); return
+        await event.bot.send_callback(cb.callback_id, notification=" "); return
     text = _personal_render(active, cat, 0)
     kb = _personal_done_kb(active, cat, 0)
     await msg.answer(text=text, attachments=[kb] if kb else KB_PERSONAL)
-    await event.bot.send_callback(cb.callback_id)
+    await event.bot.send_callback(cb.callback_id, notification=" ")
 
 async def personal_show_active(msg):
     items = personal_get_all()
@@ -9419,7 +9419,7 @@ async def cb_personal_page(event: MessageCallback):
     msg = event.message
     parts = cb.payload.split("_")
     if len(parts) < 3:
-        await event.bot.send_callback(cb.callback_id); return
+        await event.bot.send_callback(cb.callback_id, notification=" "); return
     cat = parts[1]
     try: page = int(parts[2])
     except ValueError: page = 0
@@ -9430,12 +9430,12 @@ async def cb_personal_page(event: MessageCallback):
     if not active:
         try: await msg.edit(text="Список пуст.")
         except: pass
-        await event.bot.send_callback(cb.callback_id); return
+        await event.bot.send_callback(cb.callback_id, notification=" "); return
     text = _personal_render(active, cat, page)
     kb = _personal_done_kb(active, cat, page)
     try: await msg.edit(text=text, attachments=[kb])
     except Exception as e: logger.warning(f"Personal page: {e}")
-    await event.bot.send_callback(cb.callback_id)
+    await event.bot.send_callback(cb.callback_id, notification=" ")
 
 @router.message_callback(F.payload.startswith("pdone_"))
 async def cb_personal_done_btn(event: MessageCallback):
@@ -9444,9 +9444,9 @@ async def cb_personal_done_btn(event: MessageCallback):
     # Формат: pdone_<row>_<cat>_<page>
     parts = cb.payload.split("_")
     if len(parts) < 4:
-        await event.bot.send_callback(cb.callback_id); return
+        await event.bot.send_callback(cb.callback_id, notification=" "); return
     try: row_num = int(parts[1])
-    except ValueError: await event.bot.send_callback(cb.callback_id); return
+    except ValueError: await event.bot.send_callback(cb.callback_id, notification=" "); return
     cat = parts[2]
     try: page = int(parts[3])
     except ValueError: page = 0
@@ -9460,7 +9460,7 @@ async def cb_personal_done_btn(event: MessageCallback):
         if not active:
             try: await msg.edit(text="✅ Готово, список пуст.")
             except: pass
-            await event.bot.send_callback(cb.callback_id); return
+            await event.bot.send_callback(cb.callback_id, notification=" "); return
         # Если на странице больше нет записей — откатываемся на предыдущую
         total_pages = (len(active) + PERSONAL_PAGE_SIZE - 1) // PERSONAL_PAGE_SIZE
         if page >= total_pages: page = max(0, total_pages - 1)
@@ -9468,10 +9468,10 @@ async def cb_personal_done_btn(event: MessageCallback):
         kb = _personal_done_kb(active, cat, page)
         try: await msg.edit(text=text, attachments=[kb])
         except Exception as e: logger.warning(f"Personal refresh: {e}")
-        await event.bot.send_callback(cb.callback_id)
+        await event.bot.send_callback(cb.callback_id, notification=" ")
     except Exception as e:
         logger.error(f"Personal done btn: {e}")
-        await event.bot.send_callback(cb.callback_id)
+        await event.bot.send_callback(cb.callback_id, notification=" ")
 
 async def personal_complete(msg, query):
     items = personal_get_all()
@@ -10255,9 +10255,9 @@ async def cb_recipe_cat(event: MessageCallback):
     msg = event.message
     uid = cb.user.user_id
     draft = recipe_drafts.get(uid)
-    if not draft: return await event.bot.send_callback(cb.callback_id)
+    if not draft: return await event.bot.send_callback(cb.callback_id, notification=" ")
     cat = cb.payload[len("recipe_cat_"):]
-    if cat not in RECIPE_CATEGORIES: return await event.bot.send_callback(cb.callback_id)
+    if cat not in RECIPE_CATEGORIES: return await event.bot.send_callback(cb.callback_id, notification=" ")
     draft["category"] = cat
     user_states[uid] = {"step": "recipe_preview"}
 
@@ -10268,7 +10268,7 @@ async def cb_recipe_cat(event: MessageCallback):
         [CallbackButton(text="🗑 Отмена", payload="recipe_cancel")],
     ])
     await msg.edit(text=preview + "\n\n<i>Всё верно?</i>", attachments=[kb])
-    await event.bot.send_callback(cb.callback_id)
+    await event.bot.send_callback(cb.callback_id, notification=" ")
 
 
 @router.message_callback(F.callback.payload == "recipe_change_cat")
@@ -10277,14 +10277,14 @@ async def cb_recipe_change_cat(event: MessageCallback):
     msg = event.message
     uid = cb.user.user_id
     draft = recipe_drafts.get(uid)
-    if not draft: return await event.bot.send_callback(cb.callback_id)
+    if not draft: return await event.bot.send_callback(cb.callback_id, notification=" ")
     user_states[uid] = {"step": "recipe_cat"}
     preview = _fmt_recipe_preview(draft)
     kb_rows = [[CallbackButton(text=f"{RECIPE_CAT_EMOJI[c]} {c}", payload=f"recipe_cat_{c}")]
                for c in RECIPE_CATEGORIES]
     await msg.edit(text=preview + "\n\n<b>Выбери категорию:</b>",
                                attachments=[_make_kb(kb_rows)])
-    await event.bot.send_callback(cb.callback_id)
+    await event.bot.send_callback(cb.callback_id, notification=" ")
 
 
 @router.message_callback(F.callback.payload == "recipe_save")
@@ -10293,7 +10293,7 @@ async def cb_recipe_save(event: MessageCallback):
     msg = event.message
     uid = cb.user.user_id
     draft = recipe_drafts.get(uid)
-    if not draft: return await event.bot.send_callback(cb.callback_id)
+    if not draft: return await event.bot.send_callback(cb.callback_id, notification=" ")
     w = await msg.answer(text="⏳ Сохраняю в Notion...")
     try:
         url = await asyncio.to_thread(
@@ -10311,7 +10311,7 @@ async def cb_recipe_save(event: MessageCallback):
     except Exception as e:
         logger.error(f"Recipe save: {e}")
         await w.message.edit(text=f"❌ Ошибка сохранения: {str(e)[:150]}")
-    await event.bot.send_callback(cb.callback_id)
+    await event.bot.send_callback(cb.callback_id, notification=" ")
 
 
 @router.message_callback(F.callback.payload == "recipe_cancel")
@@ -10322,7 +10322,7 @@ async def cb_recipe_cancel(event: MessageCallback):
     recipe_drafts.pop(uid, None)
     user_states.pop(uid, None)
     await msg.edit(text="Отменено.")
-    await event.bot.send_callback(cb.callback_id)
+    await event.bot.send_callback(cb.callback_id, notification=" ")
 
 
 # ==================== ЗАПУСК ====================
@@ -11234,7 +11234,7 @@ async def cb_returns(event: MessageCallback):
     cb = event.callback
     msg = event.message
     """Детальный отчёт по возвратам за текущий год."""
-    await event.bot.send_callback(cb.callback_id)
+    await event.bot.send_callback(cb.callback_id, notification=" ")
     today = datetime.date.today()
     start = datetime.date(today.year, 1, 1)
     end = today
@@ -11307,7 +11307,7 @@ def _safe_float(s) -> float:
 async def cb_report_period(event: MessageCallback):
     cb = event.callback
     msg = event.message
-    if not allowed(cb.user.user_id): return await event.bot.send_callback(cb.callback_id)
+    if not allowed(cb.user.user_id): return await event.bot.send_callback(cb.callback_id, notification=" ")
     period = cb.payload[4:]
 
     # Делегируем специализированным хэндлерам
@@ -11321,7 +11321,7 @@ async def cb_report_period(event: MessageCallback):
     # Разбивка по месяцам / кварталам — PNG
     if period in ("bymonth", "byquarter"):
         by = "month" if period == "bymonth" else "quarter"
-        await event.bot.send_callback(cb.callback_id)
+        await event.bot.send_callback(cb.callback_id, notification=" ")
         try:
             png = await asyncio.to_thread(_breakdown_png, by)
             title = "По месяцам" if by == "month" else "По кварталам"
@@ -11339,14 +11339,14 @@ async def cb_report_period(event: MessageCallback):
     if period.startswith("analyze_"):
         analyze_period = period[8:]
         p = _period_for(analyze_period)
-        if not p: return await event.bot.send_callback(cb.callback_id)
+        if not p: return await event.bot.send_callback(cb.callback_id, notification=" ")
         start, end = p[0], p[1]
         text = await asyncio.to_thread(_analyze_negative, start, end)
         await msg.answer(text=text)
-        return await event.bot.send_callback(cb.callback_id)
+        return await event.bot.send_callback(cb.callback_id, notification=" ")
 
     p = _period_for(period)
-    if not p: return await event.bot.send_callback(cb.callback_id)
+    if not p: return await event.bot.send_callback(cb.callback_id, notification=" ")
     start, end, label, prev_start, prev_end, prev_label = p
     text = await asyncio.to_thread(
         _compute_finance_report, start, end, label, prev_label, prev_start, prev_end
@@ -11358,7 +11358,7 @@ async def cb_report_period(event: MessageCallback):
         await msg.edit(text=text, attachments=[kb])
     except Exception:
         await msg.answer(text=text, attachments=[kb])
-    await event.bot.send_callback(cb.callback_id)
+    await event.bot.send_callback(cb.callback_id, notification=" ")
 
 
 # ==================== ПЛАН НА МЕСЯЦ ====================
@@ -11706,8 +11706,8 @@ def _generate_dashboard_png() -> tuple:
 async def cb_dashboard(event: MessageCallback):
     cb = event.callback
     msg = event.message
-    if not allowed(cb.user.user_id): return await event.bot.send_callback(cb.callback_id)
-    await event.bot.send_callback(cb.callback_id)
+    if not allowed(cb.user.user_id): return await event.bot.send_callback(cb.callback_id, notification=" ")
+    await event.bot.send_callback(cb.callback_id, notification=" ")
     try:
         png, caption = await asyncio.to_thread(_generate_dashboard_png)
         await msg.answer(
@@ -11723,7 +11723,7 @@ async def cb_dashboard(event: MessageCallback):
 async def cb_set_goal(event: MessageCallback):
     cb = event.callback
     msg = event.message
-    if not allowed(cb.user.user_id): return await event.bot.send_callback(cb.callback_id)
+    if not allowed(cb.user.user_id): return await event.bot.send_callback(cb.callback_id, notification=" ")
     kb = _make_kb([
         [CallbackButton(text="📅 На месяц", payload="goal_set_month"),
          CallbackButton(text="📊 На квартал", payload="goal_set_quarter")],
@@ -11731,14 +11731,14 @@ async def cb_set_goal(event: MessageCallback):
         [CallbackButton(text="📋 Текущие цели", payload="goal_show")],
     ])
     await msg.answer(text="🎯 <b>Поставить цель</b>\n\nВыбери период:", attachments=[kb])
-    await event.bot.send_callback(cb.callback_id)
+    await event.bot.send_callback(cb.callback_id, notification=" ")
 
 
 @router.message_callback(F.payload.in_({"goal_set_month", "goal_set_quarter", "goal_set_year"}))
 async def cb_goal_type(event: MessageCallback):
     cb = event.callback
     msg = event.message
-    if not allowed(cb.user.user_id): return await event.bot.send_callback(cb.callback_id)
+    if not allowed(cb.user.user_id): return await event.bot.send_callback(cb.callback_id, notification=" ")
     ptype = cb.payload[9:]  # month / quarter / year
     labels = {"month": _goal_label(_goal_key_month()),
               "quarter": _goal_label(_goal_key_quarter()),
@@ -11747,14 +11747,14 @@ async def cb_goal_type(event: MessageCallback):
     uid = cb.user.user_id
     user_states[uid] = {"step": f"goal_input_{ptype}"}
     await msg.answer(text=f"🎯 Цель на <b>{lbl}</b>.\nВведи сумму в рублях:")
-    await event.bot.send_callback(cb.callback_id)
+    await event.bot.send_callback(cb.callback_id, notification=" ")
 
 
 @router.message_callback(F.callback.payload == "goal_show")
 async def cb_goal_show(event: MessageCallback):
     cb = event.callback
     msg = event.message
-    if not allowed(cb.user.user_id): return await event.bot.send_callback(cb.callback_id)
+    if not allowed(cb.user.user_id): return await event.bot.send_callback(cb.callback_id, notification=" ")
     lines = ["🎯 <b>Текущие цели</b>\n"]
     for key_fn, label in [
         (_goal_key_month, "Месяц"),
@@ -11778,7 +11778,7 @@ async def cb_goal_show(event: MessageCallback):
             lines.append(f"<b>{label} ({lbl})</b>: <i>не задана</i>")
         lines.append("")
     await msg.answer(text="\n".join(lines))
-    await event.bot.send_callback(cb.callback_id)
+    await event.bot.send_callback(cb.callback_id, notification=" ")
 
 
 @router.message_callback(F.callback.payload == "nav_plan")
@@ -11850,7 +11850,7 @@ async def cb_plan_idea_new(event: MessageCallback):
     if not allowed(cb.user.user_id): return
     user_states[cb.user.user_id] = {"table": "plan", "step": "plan_idea_add"}
     await msg.answer(text="Напиши идею:")
-    await event.bot.send_callback(cb.callback_id)
+    await event.bot.send_callback(cb.callback_id, notification=" ")
 
 
 @router.message_callback(F.payload.startswith("plan_idea_toggle_"))
@@ -11861,7 +11861,7 @@ async def cb_plan_idea_toggle(event: MessageCallback):
     try:
         idx = int(cb.payload.split("_")[-1])
     except Exception:
-        return await event.bot.send_callback(cb.callback_id)
+        return await event.bot.send_callback(cb.callback_id, notification=" ")
     month = plan_current_month()
     sh = plan_get_sheet()
     rows = sh.get_all_values()
@@ -11873,7 +11873,7 @@ async def cb_plan_idea_toggle(event: MessageCallback):
         if idea_i == idx:
             new_typ = "идея" if r[0] == "идея_готово" else "идея_готово"
             sh.update_cell(row_i, 1, new_typ)
-            await event.bot.send_callback(cb.callback_id)
+            await event.bot.send_callback(cb.callback_id, notification=" ")
             d = plan_get_data(month)
             lines = ["💡 <b>Идеи по заработку:</b>\n"]
             for i, idea in enumerate(d["ideas"]):
@@ -11892,7 +11892,7 @@ async def cb_plan_idea_toggle(event: MessageCallback):
                 await msg.answer(text="\n".join(lines), attachments=[kb])
             return
         idea_i += 1
-    await event.bot.send_callback(cb.callback_id)
+    await event.bot.send_callback(cb.callback_id, notification=" ")
 
 
 async def main():
