@@ -4,7 +4,7 @@ from maxapi import Bot, Dispatcher, Router, F
 from maxapi.types import MessageCreated, MessageCallback, CallbackButton, LinkButton, Message
 from maxapi.types.attachments import AttachmentButton, ButtonsPayload
 from maxapi.types.input_media import InputMediaBuffer
-from maxapi.enums import AttachmentType
+from maxapi.enums import AttachmentType, ParseMode
 import anthropic, gspread
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build as google_build
@@ -14,6 +14,20 @@ from utils import (parse_claude_json, build_claude_content, split_long_text,
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Monkey-patch Message.answer/edit to default to HTML parse mode
+_orig_msg_answer = Message.answer
+_orig_msg_edit = Message.edit
+async def _html_answer(self, text=None, attachments=None, link=None, format=None, parse_mode=None, **kw):
+    if parse_mode is None and text:
+        parse_mode = ParseMode.HTML
+    return await _orig_msg_answer(self, text=text, attachments=attachments, link=link, format=format, parse_mode=parse_mode, **kw)
+async def _html_edit(self, text=None, attachments=None, link=None, format=None, parse_mode=None, **kw):
+    if parse_mode is None and text:
+        parse_mode = ParseMode.HTML
+    return await _orig_msg_edit(self, text=text, attachments=attachments, link=link, format=format, parse_mode=parse_mode, **kw)
+Message.answer = _html_answer
+Message.edit = _html_edit
 
 CLAUDE_MODEL = "claude-haiku-4-5-20251001"
 
@@ -11605,7 +11619,7 @@ def _generate_dashboard_png() -> tuple:
     fig, axes = plt.subplots(1, 2, figsize=(10, 6), facecolor=BG)
     fig.patch.set_facecolor(BG)
 
-    fig.text(0.5, 0.97, "🎯  Прогресс к целям", ha="center", va="top",
+    fig.text(0.5, 0.97, "Прогресс к целям", ha="center", va="top",
              fontsize=17, fontweight="bold", color=TEXT)
     fig.text(0.5, 0.91, today.strftime("%d.%m.%Y"), ha="center", va="top",
              fontsize=11, color=MUTED)
