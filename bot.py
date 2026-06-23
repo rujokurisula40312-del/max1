@@ -9780,7 +9780,7 @@ KB_AGENT = _make_kb([
     [CallbackButton(text="📎 Обучить", payload="nav_agent_train"), CallbackButton(text="❓ Спросить", payload="nav_agent_ask")],
     [CallbackButton(text="🎨 Нарисовать", payload="nav_agent_draw")],
     [CallbackButton(text="◀ Главная", payload="nav_main")],
-], resize_keyboard=True)
+])
 
 
 async def _gemini_extract_knowledge(parts: list) -> dict:
