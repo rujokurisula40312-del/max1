@@ -2715,6 +2715,18 @@ async def handle_photo(event: MessageCreated):
     uid = msg.sender.user_id
     if not allowed(uid): return
 
+    # Если нет вложений и это чистый текст — пропускаем, обрабатывает handle_text
+    atts = getattr(msg, "attachments", None) or []
+    has_media = any(str(getattr(a, "type", "")).lower() in ("image", "photo", "video", "audio", "file") for a in atts)
+    is_pure_text = not has_media and msg.body and msg.body.text
+
+    # Исключение: состояния где текст тоже обрабатываем здесь (рефлексия, медиа, personal_add, cal)
+    _state = user_states.get(uid, {}).get("step", "")
+    _in_reflection = uid in reflection_states and reflection_states[uid].get("step") == "waiting_input"
+    _in_cal = uid in cal_states and cal_states[uid].get("step") == "calendar_input"
+    if is_pure_text and not _in_reflection and _state not in ("media_add", "personal_add") and not _in_cal:
+        return  # отдаём handle_text
+
     # Рефлексия: фото-скриншот
     if uid in reflection_states and reflection_states[uid].get("step") == "waiting_input":
         await reflection_handle_photo(msg)
