@@ -547,7 +547,7 @@ KB_TASKS = _make_kb([
 
 KB_MEDIA = _make_kb([
     [CallbackButton(text="➕ Добавить материал", payload="nav_media_add"), CallbackButton(text="🔍 Найти материал", payload="nav_media_find")],
-    [CallbackButton(text="📁 Все материалы", payload="nav_media_all"), CallbackButton(text="◀ Главная", payload="nav_main")],
+    [CallbackButton(text="📁 Все материалы", payload="nav_media_all"), CallbackButton(text="◀ База знаний", payload="nav_knowledge")],
 ])
 
 KB_ORDERS = _make_kb([
