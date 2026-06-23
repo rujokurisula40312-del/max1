@@ -2734,6 +2734,7 @@ async def handle_photo(event: MessageCreated):
             await msg.answer(text="Сессия пересоздания потеряна."); user_states.pop(uid, None); return
         try:
             d = await _download_attachment_bytes(msg)
+            if d is None: await msg.answer(text="⚠️ Не удалось получить вложение."); return
             caption = (((msg.body.text or "") if msg.body else "") or "").strip()
             plan_item = draft["plan"][draft["cursor"]]
             text = caption or plan_item.get("text", "")
@@ -2753,6 +2754,7 @@ async def handle_photo(event: MessageCreated):
             instructions_draft[uid] = draft
         try:
             d = await _download_attachment_bytes(msg)
+            if d is None: await msg.answer(text="⚠️ Не удалось получить вложение."); return
             tg_url = ""
             caption = (((msg.body.text or "") if msg.body else "") or "").strip()
             draft["steps"].append({"text": caption, "photo_bytes": d, "tg_url": tg_url})
@@ -2771,6 +2773,7 @@ async def handle_photo(event: MessageCreated):
     if uid in user_states and user_states[uid].get("step") == "agent_learn":
         try:
             d = await _download_attachment_bytes(msg)
+            if d is None: await msg.answer(text="⚠️ Не удалось получить вложение."); return
             b64 = base64.b64encode(d).decode()
             caption = (((msg.body.text or "") if msg.body else "") or "").strip()
             parts = [{"inline_data": {"mime_type": "image/jpeg", "data": b64}}]
@@ -2786,6 +2789,7 @@ async def handle_photo(event: MessageCreated):
     if uid in user_states and user_states[uid].get("step") == "recipe_wait":
         try:
             d = await _download_attachment_bytes(msg)
+            if d is None: await msg.answer(text="⚠️ Не удалось получить вложение."); return
             b64 = base64.b64encode(d).decode()
             gemini_parts = [{"inline_data": {"mime_type": "image/jpeg", "data": b64}}]
             await _recipe_process_file(msg, uid, gemini_parts, image_bytes=d)
@@ -2801,6 +2805,7 @@ async def handle_photo(event: MessageCreated):
             w = await msg.answer(text="Распознаю...")
             try:
                 d = await _download_attachment_bytes(msg)
+                if d is None: await msg.answer(text="⚠️ Не удалось получить вложение."); return
                 b64 = base64.b64encode(d).decode()
                 r = claude.messages.create(model=CLAUDE_MODEL, max_tokens=200,
                     system="""Определи что на скриншоте из русскоязычного приложения (фильм, сериал, песня, книга, бренд, товар).
@@ -2830,6 +2835,7 @@ async def handle_photo(event: MessageCreated):
         w = await msg.answer(text="Распознаю...")
         try:
             d = await _download_attachment_bytes(msg)
+            if d is None: await msg.answer(text="⚠️ Не удалось получить вложение."); return
             b64 = base64.b64encode(d).decode()
             from calendar_module import handle_calendar_text as _hct
             r = claude.messages.create(model=CLAUDE_MODEL, max_tokens=1000,
@@ -2872,6 +2878,7 @@ async def handle_photo(event: MessageCreated):
     table = user_states[uid].get("table")
     w = await msg.answer(text="Получил фото...")
     d = await _download_attachment_bytes(msg)
+    if d is None: await msg.answer(text="⚠️ Не удалось получить вложение."); return
     doc_entry = {"type":"image","media_type":"image/jpeg","data":base64.b64encode(d).decode()}
     if table == "guides":
         if uid not in guide_docs: guide_docs[uid] = []
@@ -2900,6 +2907,7 @@ async def handle_video(event: MessageCreated):
         vid = msg.video or msg.video_note or msg.animation
         try:
             d = await _download_attachment_bytes(msg)
+            if d is None: await msg.answer(text="⚠️ Не удалось получить вложение."); return
             caption = (((msg.body.text or "") if msg.body else "") or "").strip()
             plan_item = draft["plan"][draft["cursor"]]
             text = caption or plan_item.get("text", "")
@@ -2924,6 +2932,7 @@ async def handle_video(event: MessageCreated):
         vid = msg.video or msg.video_note or msg.animation
         try:
             d = await _download_attachment_bytes(msg)
+            if d is None: await msg.answer(text="⚠️ Не удалось получить вложение."); return
             caption = (((msg.body.text or "") if msg.body else "") or "").strip()
             draft["steps"].append({"text": caption, "video_bytes": d})
             kb = _make_kb([
@@ -2968,6 +2977,7 @@ async def handle_doc(event: MessageCreated):
         if mime == "application/pdf" or mime.startswith("image/") or mime == "text/plain":
             try:
                 d = await _download_attachment_bytes(msg)
+                if d is None: await msg.answer(text="⚠️ Не удалось получить вложение."); return
                 b64 = base64.b64encode(d).decode()
                 if mime == "text/plain":
                     text_content = d.decode("utf-8", errors="ignore")
@@ -2993,6 +3003,7 @@ async def handle_doc(event: MessageCreated):
         if mime == "application/pdf" or mime.startswith("image/"):
             try:
                 d = await _download_attachment_bytes(msg)
+                if d is None: await msg.answer(text="⚠️ Не удалось получить вложение."); return
                 b64 = base64.b64encode(d).decode()
                 if mime == "application/pdf":
                     gemini_parts = [{"inline_data": {"mime_type": "application/pdf", "data": b64}}]
@@ -3014,6 +3025,7 @@ async def handle_doc(event: MessageCreated):
             w = await msg.answer(text="Распознаю PDF...")
             try:
                 d = await _download_attachment_bytes(msg)
+                if d is None: await msg.answer(text="⚠️ Не удалось получить вложение."); return
                 b64 = base64.b64encode(d).decode()
                 from calendar_module import handle_calendar_text as _hct
                 r = claude.messages.create(model=CLAUDE_MODEL, max_tokens=1000,
@@ -3056,6 +3068,7 @@ async def handle_doc(event: MessageCreated):
         w = await msg.answer(text="Читаю экспорт чата...")
         try:
             d = await _download_attachment_bytes(msg)
+            if d is None: await msg.answer(text="⚠️ Не удалось получить вложение."); return
             text_content = d.decode("utf-8", errors="ignore")
             await w.delete()
             await tourist_analyze_chat_export(msg, uid, text_content)
@@ -3068,6 +3081,7 @@ async def handle_doc(event: MessageCreated):
         return await msg.answer(text="Поддерживаются: PDF, JPEG, PNG, TXT")
     w = await msg.answer(text="Получил документ...")
     d = await _download_attachment_bytes(msg)
+    if d is None: await msg.answer(text="⚠️ Не удалось получить вложение."); return
     bt = "document" if doc.mime_type == "application/pdf" else "image"
     doc_entry = {"type":bt,"media_type":doc.mime_type,"data":base64.b64encode(d).decode()}
     if table == "guides":
@@ -3846,6 +3860,7 @@ async def _transcribe_voice(msg) -> str:
     """Распознаёт голосовое через Сбер SaluteSpeech.
     Короткое (≤~1 мин) — sync; длинное — async-пайплайн."""
     voice_data = await _download_attachment_bytes(msg)
+    if d is None: await msg.answer(text="⚠️ Не удалось получить вложение."); return
     token = await _sber_get_access_token()
     duration = 0
     if duration > 55:
@@ -4335,7 +4350,7 @@ async def cb_guide_save(event: MessageCallback):
 
         # Нет дубля — вставляем с сортировкой по стране
         insert_guide_sorted(sheet, all_rows, g)
-        await msg.edit(text=msg.text + "\n\n✅ Записано в базу гидов!")
+        await msg.edit(text=((msg.body.text or "") if msg.body else "") + "\n\n✅ Записано в базу гидов!")
         await advance_guide(cb.message, uid, state)
         await event.bot.send_callback(cb.callback_id, notification=" ")
     except Exception as e:
@@ -5015,7 +5030,7 @@ async def cb_confirm(event: MessageCallback):
                cur.get("article",""),cur.get("comment",""),cur.get("order_number",""),
                cur.get("month",""),cur.get("year",""),cur.get("tour_operator",""),cur.get("note","")]
         gc.open_by_key(SPREADSHEET_ID_1).sheet1.append_row([str(v) if v is not None else "" for v in row], value_input_option="USER_ENTERED")
-        await msg.edit(text=msg.text + "\n\nЗаписано!")
+        await msg.edit(text=((msg.body.text or "") if msg.body else "") + "\n\nЗаписано!")
         if cur.get("article","").startswith("01."):
             state["step"] = "ask_commission"
             state["_commission_base"] = cur.copy()
@@ -5111,7 +5126,7 @@ async def cb_cancel(event: MessageCallback):
     cb = event.callback
     msg = event.message
     user_states.pop(cb.user.user_id, None); batch_docs.pop(cb.user.user_id, None)
-    await msg.edit(text=msg.text + "\n\nОтменено."); await event.bot.send_callback(cb.callback_id, notification=" ")
+    await msg.edit(text=((msg.body.text or "") if msg.body else "") + "\n\nОтменено."); await event.bot.send_callback(cb.callback_id, notification=" ")
 
 def fmt(d):
     lines = []
@@ -5366,7 +5381,7 @@ async def cb_kconfirm(event: MessageCallback):
                d.get("note",""), d.get("contract",""), d.get("status","")]
         row = [str(v) if v is not None else "" for v in row]
         sheet.append_row(row, value_input_option="USER_ENTERED")
-        await msg.edit(text=msg.text + "\n\nЗаписано в буфер КУДиР!")
+        await msg.edit(text=((msg.body.text or "") if msg.body else "") + "\n\nЗаписано в буфер КУДиР!")
         # Сборная группа: остались записи в очереди — показываем следующую
         queue = state.get("kudir_queue") or []
         if queue:
@@ -5594,7 +5609,7 @@ async def cb_tourist_save(event: MessageCallback):
                t.get("destination",""), t.get("dates",""), t.get("budget",""),
                t.get("group",""), t.get("wishes",""), t.get("status","новый"), t.get("comments",""), t.get("source","")]
         sheet.append_row([str(v) if v else "" for v in row], value_input_option="USER_ENTERED")
-        await msg.edit(text=msg.text + "\n\nЗаписано!")
+        await msg.edit(text=((msg.body.text or "") if msg.body else "") + "\n\nЗаписано!")
         state["tourist_idx"] += 1
         if state["tourist_idx"] < len(state["tourist_ops"]):
             await show_tourist(cb.message, uid)
