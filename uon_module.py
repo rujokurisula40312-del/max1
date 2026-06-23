@@ -633,4 +633,4 @@ async def cb_uon_lead(event: MessageCallback):
     kb = _kb_for_lead(url)
     atts = [kb] if kb else None
     await event.message.answer(text, attachments=atts)
-    await event.bot.send_callback(event.callback.callback_id)
+    await event.bot.send_callback(event.callback.callback_id, notification=" ")

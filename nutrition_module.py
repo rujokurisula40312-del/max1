@@ -1485,22 +1485,22 @@ async def _apply_leftover(msg, meal_id: int,
 async def on_nutr_callback(event: MessageCallback):
     uid = event.callback.user.user_id
     if not is_owner(uid):
-        await event.bot.send_callback(event.callback.callback_id)
+        await event.bot.send_callback(event.callback.callback_id, notification=" ")
         return
     parts = event.callback.payload.split(":")
     if len(parts) < 3:
-        await event.bot.send_callback(event.callback.callback_id)
+        await event.bot.send_callback(event.callback.callback_id, notification=" ")
         return
     action = parts[1]
     try:
         meal_id = int(parts[2])
     except ValueError:
-        await event.bot.send_callback(event.callback.callback_id)
+        await event.bot.send_callback(event.callback.callback_id, notification=" ")
         return
 
     meal = await asyncio.to_thread(get_meal, meal_id)
     if not meal or meal["user_id"] != uid:
-        await event.bot.send_callback(event.callback.callback_id)
+        await event.bot.send_callback(event.callback.callback_id, notification=" ")
         return
 
     if action == "e":
@@ -1509,7 +1509,7 @@ async def on_nutr_callback(event: MessageCallback):
             "Что поправить? Например: «не 150 г рыбы, а 200» или «добавь сметану 30 г».\n"
             "Отмена — /отмена_еда"
         ))
-        await event.bot.send_callback(event.callback.callback_id)
+        await event.bot.send_callback(event.callback.callback_id, notification=" ")
         return
 
     if action == "l":
@@ -1519,7 +1519,7 @@ async def on_nutr_callback(event: MessageCallback):
             "«осталась половина», «треть не доела», «осталось 100 г», «съела чуть-чуть».\n"
             "Отмена — /отмена_еда"
         ))
-        await event.bot.send_callback(event.callback.callback_id)
+        await event.bot.send_callback(event.callback.callback_id, notification=" ")
         return
 
     if action == "d":
@@ -1527,7 +1527,7 @@ async def on_nutr_callback(event: MessageCallback):
             await event.message.edit(attachments=[kb_confirm_delete(meal_id)])
         except Exception:
             await event.message.answer(text="Точно удалить?", attachments=[kb_confirm_delete(meal_id)])
-        await event.bot.send_callback(event.callback.callback_id)
+        await event.bot.send_callback(event.callback.callback_id, notification=" ")
         return
 
     if action == "dy":
@@ -1538,7 +1538,7 @@ async def on_nutr_callback(event: MessageCallback):
                 await event.message.edit(text=crossed, attachments=[])
             except Exception:
                 await event.message.answer(text="Запись удалена.")
-        await event.bot.send_callback(event.callback.callback_id)
+        await event.bot.send_callback(event.callback.callback_id, notification=" ")
         return
 
     if action == "dn":
@@ -1546,10 +1546,10 @@ async def on_nutr_callback(event: MessageCallback):
             await event.message.edit(attachments=[kb_meal_actions(meal_id)])
         except Exception:
             pass
-        await event.bot.send_callback(event.callback.callback_id)
+        await event.bot.send_callback(event.callback.callback_id, notification=" ")
         return
 
-    await event.bot.send_callback(event.callback.callback_id)
+    await event.bot.send_callback(event.callback.callback_id, notification=" ")
 
 
 # ==================== Команды ====================

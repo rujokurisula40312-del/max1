@@ -282,7 +282,7 @@ async def cb_checklist_done(event: MessageCallback):
     pl=event.callback.payload[len("cchk_"):]
     date_str, _, idx_str = pl.partition("_")
     try: idx=int(idx_str)-1
-    except ValueError: await event.bot.send_callback(event.callback.callback_id); return
+    except ValueError: await event.bot.send_callback(event.callback.callback_id, notification=" "); return
     try: d=datetime.strptime(date_str,"%Y-%m-%d").date()
     except: d=now_msk().date()
     evs=get_events(d,1)
@@ -352,7 +352,7 @@ async def cb_open_day(event: MessageCallback):
     except: d=now_msk().date()
     label="Сегодня" if d==now_msk().date() else ("Завтра" if d==now_msk().date()+timedelta(days=1) else fmt_date(d))
     await show_checklist(event.message, d, label)
-    await event.bot.send_callback(event.callback.callback_id)
+    await event.bot.send_callback(event.callback.callback_id, notification=" ")
 
 async def handle_calendar_text(msg):
     uid=msg.sender.user_id; text=(msg.body.text or "").strip(); t=text.lower()
@@ -551,51 +551,51 @@ async def handle_calendar_text(msg):
 @cal_router.message_callback(F.callback.payload=="cal_today")
 async def cb_today(event: MessageCallback):
     await show_checklist(event.message, now_msk().date(), "Сегодня")
-    await event.bot.send_callback(event.callback.callback_id)
+    await event.bot.send_callback(event.callback.callback_id, notification=" ")
 
 @cal_router.message_callback(F.callback.payload=="cal_tomorrow")
 async def cb_tmrw(event: MessageCallback):
     await show_checklist(event.message, now_msk().date()+timedelta(days=1), "Завтра")
-    await event.bot.send_callback(event.callback.callback_id)
+    await event.bot.send_callback(event.callback.callback_id, notification=" ")
 
 @cal_router.message_callback(F.callback.payload=="cal_week")
 async def cb_week(event: MessageCallback):
     await show_week(event.message)
-    await event.bot.send_callback(event.callback.callback_id)
+    await event.bot.send_callback(event.callback.callback_id, notification=" ")
 
 @cal_router.message_callback(F.callback.payload=="cal_add")
 async def cb_add(event: MessageCallback):
     cal_states[event.callback.user.user_id]={"step":"calendar_input"}
     await event.message.answer("Напиши что добавить:\n• Встреча завтра в 14:00\n• Рейс SU1234 15 апреля 8:30\n• Позвонить Кристине послезавтра")
-    await event.bot.send_callback(event.callback.callback_id)
+    await event.bot.send_callback(event.callback.callback_id, notification=" ")
 
 @cal_router.message_callback(F.callback.payload=="cal_force")
 async def cb_force(event: MessageCallback):
     uid=event.callback.user.user_id; data=cal_states.get(uid,{}).get("event_data")
     if not data:
-        await event.bot.send_callback(event.callback.callback_id)
+        await event.bot.send_callback(event.callback.callback_id, notification=" ")
         return
     result=create_event(data); last_event[uid]=result; cal_states.pop(uid,None)
     await schedule_reminder(uid,result,data.get("reminder_minutes",15))
     await event.message.edit(text=f"«{data.get('title','')}» создано.")
-    await event.bot.send_callback(event.callback.callback_id)
+    await event.bot.send_callback(event.callback.callback_id, notification=" ")
 
 @cal_router.message_callback(F.callback.payload.startswith("cal_alt_"))
 async def cb_apply_alt_time(event: MessageCallback):
     uid = event.callback.user.user_id
     data = cal_states.get(uid, {}).get("event_data")
     if not data:
-        await event.bot.send_callback(event.callback.callback_id)
+        await event.bot.send_callback(event.callback.callback_id, notification=" ")
         return
     raw = event.callback.payload[len("cal_alt_"):]
     if len(raw) != 4 or not raw.isdigit():
-        await event.bot.send_callback(event.callback.callback_id)
+        await event.bot.send_callback(event.callback.callback_id, notification=" ")
         return
     new_time = f"{raw[:2]}:{raw[2:]}"
     try:
         datetime.strptime(new_time, "%H:%M")
     except ValueError:
-        await event.bot.send_callback(event.callback.callback_id)
+        await event.bot.send_callback(event.callback.callback_id, notification=" ")
         return
 
     data["time"] = new_time
@@ -613,13 +613,13 @@ async def cb_apply_alt_time(event: MessageCallback):
         )
     except Exception as e:
         logger.error(f"Cal alt time create: {e}")
-    await event.bot.send_callback(event.callback.callback_id)
+    await event.bot.send_callback(event.callback.callback_id, notification=" ")
 
 @cal_router.message_callback(F.callback.payload=="cal_cancel")
 async def cb_cancel(event: MessageCallback):
     cal_states.pop(event.callback.user.user_id, None)
     await event.message.edit(text="Отменено.")
-    await event.bot.send_callback(event.callback.callback_id)
+    await event.bot.send_callback(event.callback.callback_id, notification=" ")
 
 @cal_router.message_callback(F.callback.payload.startswith("cal_done_"))
 async def cb_done(event: MessageCallback):
@@ -633,7 +633,7 @@ async def cb_done(event: MessageCallback):
             if "[done]" not in d.lower(): ev["description"]=d+"\n[DONE]"; ev["summary"]="✓ "+ev.get("summary","")
             cal_service.events().update(calendarId=cid,eventId=eid,body=ev).execute()
             await event.message.edit(text=f"✓ {ev.get('summary','')} выполнено!")
-            await event.bot.send_callback(event.callback.callback_id)
+            await event.bot.send_callback(event.callback.callback_id, notification=" ")
             return
         except: continue
 

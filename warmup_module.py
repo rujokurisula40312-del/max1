@@ -673,10 +673,10 @@ async def cmd_warmup(event: MessageCreated):
 @warmup_router.message_callback(F.callback.payload == "wu_new")
 async def cb_wu_new(event: MessageCallback):
     if event.callback.user.user_id != _owner_id:
-        await event.bot.send_callback(event.callback.callback_id); return
+        await event.bot.send_callback(event.callback.callback_id, notification=" "); return
     warmup_states[event.callback.user.user_id] = {"step": "new_name"}
     await event.message.answer(text="Как называется прогрев?\n<i>Например: Июнь 2026</i>", attachments=[_kb_cancel()])
-    await event.bot.send_callback(event.callback.callback_id)
+    await event.bot.send_callback(event.callback.callback_id, notification=" ")
 
 
 # ── Добавить статистику (пачка фото) ───────────────────────────────
@@ -685,16 +685,16 @@ async def cb_wu_new(event: MessageCallback):
 async def cb_wu_add_stats(event: MessageCallback):
     uid = event.callback.user.user_id
     if uid != _owner_id:
-        await event.bot.send_callback(event.callback.callback_id); return
+        await event.bot.send_callback(event.callback.callback_id, notification=" "); return
     warmups = _get_warmups()
     if not warmups:
         await event.message.answer(text="Нет активных прогревов. Создай новый.", attachments=[_kb_main()])
-        await event.bot.send_callback(event.callback.callback_id); return
+        await event.bot.send_callback(event.callback.callback_id, notification=" "); return
     if len(warmups) == 1:
         await _start_stats_flow(event.message, uid, warmups[0])
     else:
         await event.message.answer(text="Выбери прогрев:", attachments=[_kb_warmups(warmups, "wu_sel_stats")])
-    await event.bot.send_callback(event.callback.callback_id)
+    await event.bot.send_callback(event.callback.callback_id, notification=" ")
 
 
 @warmup_router.message_callback(F.callback.payload.startswith("wu_sel_stats:"))
@@ -703,9 +703,9 @@ async def cb_wu_sel_stats(event: MessageCallback):
     warmups = _get_warmups(only_active=False)
     w = next((x for x in warmups if str(x["ID"]) == wid), None)
     if not w:
-        await event.bot.send_callback(event.callback.callback_id); return
+        await event.bot.send_callback(event.callback.callback_id, notification=" "); return
     await _start_stats_flow(event.message, event.callback.user.user_id, w)
-    await event.bot.send_callback(event.callback.callback_id)
+    await event.bot.send_callback(event.callback.callback_id, notification=" ")
 
 
 async def _start_stats_flow(msg, uid, warmup):
@@ -759,16 +759,16 @@ def _start_collect_photos(uid, warmup):
 async def cb_wu_report(event: MessageCallback):
     uid = event.callback.user.user_id
     if uid != _owner_id:
-        await event.bot.send_callback(event.callback.callback_id); return
+        await event.bot.send_callback(event.callback.callback_id, notification=" "); return
     warmups = _get_warmups()
     if not warmups:
         await event.message.answer(text="Нет активных прогревов.", attachments=[_kb_main()])
-        await event.bot.send_callback(event.callback.callback_id); return
+        await event.bot.send_callback(event.callback.callback_id, notification=" "); return
     if len(warmups) == 1:
         await _send_report(event.message, warmups[0])
     else:
         await event.message.answer(text="Выбери прогрев:", attachments=[_kb_warmups(warmups, "wu_sel_report")])
-    await event.bot.send_callback(event.callback.callback_id)
+    await event.bot.send_callback(event.callback.callback_id, notification=" ")
 
 
 @warmup_router.message_callback(F.callback.payload.startswith("wu_sel_report:"))
@@ -777,18 +777,18 @@ async def cb_wu_sel_report(event: MessageCallback):
     warmups = _get_warmups(only_active=False)
     w = next((x for x in warmups if str(x["ID"]) == wid), None)
     if w: await _send_report(event.message, w)
-    await event.bot.send_callback(event.callback.callback_id)
+    await event.bot.send_callback(event.callback.callback_id, notification=" ")
 
 
 @warmup_router.message_callback(F.callback.payload == "wu_upd_subs")
 async def cb_wu_upd_subs(event: MessageCallback):
     uid = event.callback.user.user_id
     if uid != _owner_id:
-        await event.bot.send_callback(event.callback.callback_id); return
+        await event.bot.send_callback(event.callback.callback_id, notification=" "); return
     warmups = _get_warmups()
     if not warmups:
         await event.message.answer(text="Нет активных прогревов.", attachments=[_kb_main()])
-        await event.bot.send_callback(event.callback.callback_id); return
+        await event.bot.send_callback(event.callback.callback_id, notification=" "); return
     if len(warmups) == 1:
         warmup_states[uid] = {
             "step": "upd_subscribers",
@@ -801,7 +801,7 @@ async def cb_wu_upd_subs(event: MessageCallback):
         )
     else:
         await event.message.answer(text="Выбери прогрев:", attachments=[_kb_warmups(warmups, "wu_sel_updsubs")])
-    await event.bot.send_callback(event.callback.callback_id)
+    await event.bot.send_callback(event.callback.callback_id, notification=" ")
 
 
 @warmup_router.message_callback(F.callback.payload.startswith("wu_sel_updsubs:"))
@@ -811,29 +811,29 @@ async def cb_wu_sel_updsubs(event: MessageCallback):
     warmups = _get_warmups(only_active=False)
     w = next((x for x in warmups if str(x["ID"]) == wid), None)
     if not w:
-        await event.bot.send_callback(event.callback.callback_id); return
+        await event.bot.send_callback(event.callback.callback_id, notification=" "); return
     warmup_states[uid] = {"step": "upd_subscribers", "warmup_id": wid, "warmup_name": w["Название"]}
     await event.message.answer(
         text=f"Прогрев: <b>{w['Название']}</b>\n\n👥 Введи актуальное количество подписчиков:",
         attachments=[_kb_cancel()]
     )
-    await event.bot.send_callback(event.callback.callback_id)
+    await event.bot.send_callback(event.callback.callback_id, notification=" ")
 
 
 @warmup_router.message_callback(F.callback.payload == "wu_clear_days")
 async def cb_wu_clear_days(event: MessageCallback):
     uid = event.callback.user.user_id
     if uid != _owner_id:
-        await event.bot.send_callback(event.callback.callback_id); return
+        await event.bot.send_callback(event.callback.callback_id, notification=" "); return
     warmups = _get_warmups()
     if not warmups:
         await event.message.answer(text="Нет активных прогревов.", attachments=[_kb_main()])
-        await event.bot.send_callback(event.callback.callback_id); return
+        await event.bot.send_callback(event.callback.callback_id, notification=" "); return
     if len(warmups) == 1:
         await _clear_warmup_days(event.message, str(warmups[0]["ID"]), warmups[0]["Название"])
     else:
         await event.message.answer(text="Выбери прогрев для сброса:", attachments=[_kb_warmups(warmups, "wu_sel_clear")])
-    await event.bot.send_callback(event.callback.callback_id)
+    await event.bot.send_callback(event.callback.callback_id, notification=" ")
 
 
 @warmup_router.message_callback(F.callback.payload.startswith("wu_sel_clear:"))
@@ -842,7 +842,7 @@ async def cb_wu_sel_clear(event: MessageCallback):
     warmups = _get_warmups(only_active=False)
     w = next((x for x in warmups if str(x["ID"]) == wid), None)
     if w: await _clear_warmup_days(event.message, wid, w["Название"])
-    await event.bot.send_callback(event.callback.callback_id)
+    await event.bot.send_callback(event.callback.callback_id, notification=" ")
 
 
 async def _clear_warmup_days(msg, warmup_id: str, warmup_name: str):
@@ -870,16 +870,16 @@ async def _clear_warmup_days(msg, warmup_id: str, warmup_name: str):
 async def cb_wu_view_days(event: MessageCallback):
     uid = event.callback.user.user_id
     if uid != _owner_id:
-        await event.bot.send_callback(event.callback.callback_id); return
+        await event.bot.send_callback(event.callback.callback_id, notification=" "); return
     warmups = _get_warmups()
     if not warmups:
         await event.message.answer(text="Нет активных прогревов.", attachments=[_kb_main()])
-        await event.bot.send_callback(event.callback.callback_id); return
+        await event.bot.send_callback(event.callback.callback_id, notification=" "); return
     if len(warmups) == 1:
         await _show_days(event.message, str(warmups[0]["ID"]), warmups[0]["Название"])
     else:
         await event.message.answer(text="Выбери прогрев:", attachments=[_kb_warmups(warmups, "wu_sel_viewdays")])
-    await event.bot.send_callback(event.callback.callback_id)
+    await event.bot.send_callback(event.callback.callback_id, notification=" ")
 
 
 @warmup_router.message_callback(F.callback.payload.startswith("wu_sel_viewdays:"))
@@ -888,7 +888,7 @@ async def cb_wu_sel_viewdays(event: MessageCallback):
     warmups = _get_warmups(only_active=False)
     w = next((x for x in warmups if str(x["ID"]) == wid), None)
     if w: await _show_days(event.message, wid, w["Название"])
-    await event.bot.send_callback(event.callback.callback_id)
+    await event.bot.send_callback(event.callback.callback_id, notification=" ")
 
 
 async def _show_days(msg, warmup_id: str, warmup_name: str):
@@ -939,7 +939,7 @@ async def _show_days(msg, warmup_id: str, warmup_name: str):
 async def cb_wu_del_row(event: MessageCallback):
     uid = event.callback.user.user_id
     if uid != _owner_id:
-        await event.bot.send_callback(event.callback.callback_id); return
+        await event.bot.send_callback(event.callback.callback_id, notification=" "); return
     parts = event.callback.payload.split(":", 3)
     sheet_row = int(parts[1])
     warmup_id = parts[2]
@@ -959,34 +959,34 @@ async def cb_wu_del_row(event: MessageCallback):
     except Exception as e:
         logger.error(f"warmup del row: {e}")
         await event.message.answer(text="Ошибка при удалении строки.", attachments=[_kb_main()])
-    await event.bot.send_callback(event.callback.callback_id)
+    await event.bot.send_callback(event.callback.callback_id, notification=" ")
 
 
 @warmup_router.message_callback(F.callback.payload == "wu_back_main")
 async def cb_wu_back_main(event: MessageCallback):
     if event.callback.user.user_id != _owner_id:
-        await event.bot.send_callback(event.callback.callback_id); return
+        await event.bot.send_callback(event.callback.callback_id, notification=" "); return
     await event.message.answer(text="Меню прогрева:", attachments=[_kb_main()])
-    await event.bot.send_callback(event.callback.callback_id)
+    await event.bot.send_callback(event.callback.callback_id, notification=" ")
 
 
 @warmup_router.message_callback(F.callback.payload == "wu_stats_ok")
 async def cb_wu_stats_ok(event: MessageCallback):
     uid = event.callback.user.user_id
     if uid != _owner_id:
-        await event.bot.send_callback(event.callback.callback_id); return
+        await event.bot.send_callback(event.callback.callback_id, notification=" "); return
     state = warmup_states.get(uid, {})
     if state.get("step") == "confirm_stats":
         state["step"] = "day_sales_count"
         await _ask_next_date(event.message, state)
-    await event.bot.send_callback(event.callback.callback_id)
+    await event.bot.send_callback(event.callback.callback_id, notification=" ")
 
 
 @warmup_router.message_callback(F.callback.payload == "wu_stats_edit")
 async def cb_wu_stats_edit(event: MessageCallback):
     uid = event.callback.user.user_id
     if uid != _owner_id:
-        await event.bot.send_callback(event.callback.callback_id); return
+        await event.bot.send_callback(event.callback.callback_id, notification=" "); return
     state = warmup_states.get(uid, {})
     if state.get("step") == "confirm_stats":
         state["step"] = "confirm_stats_edit"
@@ -995,14 +995,14 @@ async def cb_wu_stats_edit(event: MessageCallback):
             "постов  охват  лайков  репостов\n"
             "Пример: 5 205 26 10"
         ))
-    await event.bot.send_callback(event.callback.callback_id)
+    await event.bot.send_callback(event.callback.callback_id, notification=" ")
 
 
 @warmup_router.message_callback(F.callback.payload == "wu_stats_skip")
 async def cb_wu_stats_skip(event: MessageCallback):
     uid = event.callback.user.user_id
     if uid != _owner_id:
-        await event.bot.send_callback(event.callback.callback_id); return
+        await event.bot.send_callback(event.callback.callback_id, notification=" "); return
     state = warmup_states.get(uid, {})
     if state.get("step") == "confirm_stats":
         skipped_date = state["dates_queue"].pop(0)
@@ -1013,30 +1013,30 @@ async def cb_wu_stats_skip(event: MessageCallback):
         else:
             await _finalize_all_days(event.message, state)
             warmup_states.pop(uid, None)
-    await event.bot.send_callback(event.callback.callback_id)
+    await event.bot.send_callback(event.callback.callback_id, notification=" ")
 
 
 @warmup_router.message_callback(F.callback.payload == "wu_cancel")
 async def cb_wu_cancel(event: MessageCallback):
     warmup_states.pop(event.callback.user.user_id, None)
     await event.message.answer(text="Отменено.", attachments=[_kb_main()])
-    await event.bot.send_callback(event.callback.callback_id)
+    await event.bot.send_callback(event.callback.callback_id, notification=" ")
 
 
 @warmup_router.message_callback(F.callback.payload == "wu_no_posts")
 async def cb_wu_no_posts(event: MessageCallback):
     uid = event.callback.user.user_id
     if uid != _owner_id:
-        await event.bot.send_callback(event.callback.callback_id); return
+        await event.bot.send_callback(event.callback.callback_id, notification=" "); return
     state = warmup_states.get(uid)
     if not state:
-        await event.bot.send_callback(event.callback.callback_id); return
+        await event.bot.send_callback(event.callback.callback_id, notification=" "); return
     state["step"] = "no_posts_date"
     await event.message.answer(
         text="📅 Введи дату дня (без постов):\nФормат: ДД.ММ, например 12.06",
         attachments=[_kb_cancel()]
     )
-    await event.bot.send_callback(event.callback.callback_id)
+    await event.bot.send_callback(event.callback.callback_id, notification=" ")
 
 
 @warmup_router.message_callback(F.callback.payload == "wu_photos_done")
@@ -1044,7 +1044,7 @@ async def cb_wu_photos_done(event: MessageCallback):
     uid = event.callback.user.user_id
     state = warmup_states.get(uid, {})
     photos = state.get("photos", [])
-    await event.bot.send_callback(event.callback.callback_id)
+    await event.bot.send_callback(event.callback.callback_id, notification=" ")
     if not photos:
         await event.message.answer(text="Ты не отправила ни одного скрина.")
         return

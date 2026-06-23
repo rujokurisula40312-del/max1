@@ -2722,7 +2722,7 @@ async def handle_photo(event: MessageCreated):
 
     # Если в режиме медиа — сохраняем caption как текст материала
     if uid in user_states and user_states[uid].get("step") == "media_add":
-        text = msg.caption or "материал с фото"
+        text = ((msg.body.text or "") if msg.body else "") or "материал с фото"
         await media_add(msg, text)
         user_states[uid] = {"table": "media", "step": "media_add"}
         return
@@ -2734,7 +2734,7 @@ async def handle_photo(event: MessageCreated):
             await msg.answer(text="Сессия пересоздания потеряна."); user_states.pop(uid, None); return
         try:
             d = await _download_attachment_bytes(msg)
-            caption = (msg.caption or "").strip()
+            caption = (((msg.body.text or "") if msg.body else "") or "").strip()
             plan_item = draft["plan"][draft["cursor"]]
             text = caption or plan_item.get("text", "")
             draft["steps"].append({"text": text, "photo_bytes": d})
@@ -2754,7 +2754,7 @@ async def handle_photo(event: MessageCreated):
         try:
             d = await _download_attachment_bytes(msg)
             tg_url = ""
-            caption = (msg.caption or "").strip()
+            caption = (((msg.body.text or "") if msg.body else "") or "").strip()
             draft["steps"].append({"text": caption, "photo_bytes": d, "tg_url": tg_url})
             kb = _make_kb([
                 [CallbackButton(text="✅ Готово — создать документ", payload="inst_finish")],
@@ -2772,7 +2772,7 @@ async def handle_photo(event: MessageCreated):
         try:
             d = await _download_attachment_bytes(msg)
             b64 = base64.b64encode(d).decode()
-            caption = (msg.caption or "").strip()
+            caption = (((msg.body.text or "") if msg.body else "") or "").strip()
             parts = [{"inline_data": {"mime_type": "image/jpeg", "data": b64}}]
             if caption:
                 parts.append({"text": caption})
@@ -2795,8 +2795,8 @@ async def handle_photo(event: MessageCreated):
         return
 
     if uid in user_states and user_states[uid].get("step") == "personal_add":
-        if msg.caption:
-            text = msg.caption
+        if (msg.body and msg.body.text):
+            text = (msg.body.text or "") if msg.body else ""
         else:
             w = await msg.answer(text="Распознаю...")
             try:
@@ -2900,7 +2900,7 @@ async def handle_video(event: MessageCreated):
         vid = msg.video or msg.video_note or msg.animation
         try:
             d = await _download_attachment_bytes(msg)
-            caption = (msg.caption or "").strip()
+            caption = (((msg.body.text or "") if msg.body else "") or "").strip()
             plan_item = draft["plan"][draft["cursor"]]
             text = caption or plan_item.get("text", "")
             draft["steps"].append({"text": text, "video_bytes": d})
@@ -2924,7 +2924,7 @@ async def handle_video(event: MessageCreated):
         vid = msg.video or msg.video_note or msg.animation
         try:
             d = await _download_attachment_bytes(msg)
-            caption = (msg.caption or "").strip()
+            caption = (((msg.body.text or "") if msg.body else "") or "").strip()
             draft["steps"].append({"text": caption, "video_bytes": d})
             kb = _make_kb([
                 [CallbackButton(text="✅ Готово — создать документ", payload="inst_finish")],
@@ -2951,11 +2951,13 @@ async def handle_doc(event: MessageCreated):
     msg = event.message
     uid = msg.sender.user_id
     if not allowed(uid): return
-    doc = msg.document
+    # In Max, files are in attachments
+    doc_att = next((a for a in (getattr(msg, "attachments", None) or []) if str(getattr(a, "type", "")).lower() == "file"), None)
+    doc = type("doc", (), {"file_name": getattr(getattr(doc_att, "payload", None), "filename", "file") if doc_att else "file", "mime_type": getattr(getattr(doc_att, "payload", None), "mime_type", "") if doc_att else ""})()
 
     # Если в режиме медиа — сохраняем как материал
     if uid in user_states and user_states[uid].get("step") == "media_add":
-        text = msg.caption or doc.file_name or "PDF материал"
+        text = ((msg.body.text or "") if msg.body else "") or doc.file_name or "PDF материал"
         await media_add(msg, text)
         user_states[uid] = {"table": "media", "step": "media_add"}
         return
@@ -3845,7 +3847,7 @@ async def _transcribe_voice(msg) -> str:
     Короткое (≤~1 мин) — sync; длинное — async-пайплайн."""
     voice_data = await _download_attachment_bytes(msg)
     token = await _sber_get_access_token()
-    duration = getattr(msg.voice, "duration", 0) or 0
+    duration = 0
     if duration > 55:
         return await asyncio.to_thread(_sber_async_recognize_sync, voice_data, token)
     try:
