@@ -1,7 +1,7 @@
 import os, json, logging, base64, asyncio, re, math, datetime, hashlib, time
 from bs4 import BeautifulSoup
 from maxapi import Bot, Dispatcher, Router, F
-from maxapi.types import MessageCreated, MessageCallback, CallbackButton, LinkButton
+from maxapi.types import MessageCreated, MessageCallback, CallbackButton, LinkButton, Message
 from maxapi.types.attachments import AttachmentButton, ButtonsPayload
 from maxapi.types.input_media import InputMediaBuffer
 from maxapi.enums import AttachmentType
@@ -6611,7 +6611,7 @@ try:
     cal_service = google_build("calendar", "v3", credentials=creds)
     from calendar_module import cal_router, init_calendar, cal_states, handle_calendar_text, handle_cal_time_input, is_calendar_intent, start_reminder_loop
     init_calendar(cal_service, claude, bot, CALENDAR_WORK, CALENDAR_FAMILY, CALENDAR_PERSONAL, TIMEZONE, NOTIFY_USERS)
-    dp.include_router(cal_router)
+    dp.include_routers(cal_router)
     logger.info("Calendar module loaded")
 except Exception as e:
     logger.error(f"Calendar init: {e}")
@@ -6624,7 +6624,7 @@ except Exception as e:
 # ==================== U-ON Travel CRM ====================
 try:
     from uon_module import uon_router, is_configured as _uon_configured
-    dp.include_router(uon_router)
+    dp.include_routers(uon_router)
     if _uon_configured():
         logger.info("U-ON module loaded (configured)")
     else:
@@ -6648,7 +6648,7 @@ try:
         spreadsheet_id=SPREADSHEET_ID_NUTRITION,
         model=CLAUDE_MODEL,
     )
-    dp.include_router(nutrition_module.nutrition_router)
+    dp.include_routers(nutrition_module.nutrition_router)
     logger.info("Nutrition module loaded")
 except Exception as e:
     logger.error(f"Nutrition init: {e}")
@@ -6663,7 +6663,7 @@ try:
         spreadsheet_id=SPREADSHEET_ID_1,
         model=CLAUDE_MODEL,
     )
-    dp.include_router(warmup_module.warmup_router)
+    dp.include_routers(warmup_module.warmup_router)
     logger.info("Warmup module loaded")
 except Exception as e:
     logger.error(f"Warmup init: {e}")
@@ -10322,7 +10322,7 @@ async def cb_recipe_cancel(event: MessageCallback):
 
 # ==================== ЗАПУСК ====================
 
-dp.include_router(router)
+dp.include_routers(router)
 
 # ==================== WEB APP (HTTP сервер для WebApp) ====================
 from aiohttp import web
