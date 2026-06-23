@@ -2832,6 +2832,13 @@ async def handle_photo(event: MessageCreated):
 
     # Если в режиме календаря — распознаём фото как событие
     if uid in cal_states and cal_states[uid].get("step") == "calendar_input":
+        # Если нет вложения — это текст, передаём в текстовый обработчик
+        atts = getattr(msg, "attachments", None) or []
+        has_attachment = any(str(getattr(a, "type", "")).lower() in ("image", "photo", "video", "audio", "file") for a in atts)
+        if not has_attachment:
+            from calendar_module import handle_calendar_text as _hct
+            await _hct(msg)
+            return
         w = await msg.answer(text="Распознаю...")
         try:
             d = await _download_attachment_bytes(msg)
