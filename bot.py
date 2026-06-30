@@ -453,8 +453,15 @@ KB_MAIN = _make_kb([
     [CallbackButton(text="₽ Финучёт", payload="nav_finance"), CallbackButton(text="▶ Календарь", payload="nav_calendar")],
     [CallbackButton(text="📚 База знаний", payload="nav_knowledge"), CallbackButton(text="📦 Заказы", payload="nav_orders")],
     [CallbackButton(text="📋 Задачи", payload="nav_tasks"), CallbackButton(text="🔧 Полезное", payload="nav_useful")],
-    [CallbackButton(text="🍎 Питание", payload="nav_nutrition"), CallbackButton(text="🧠 Агент", payload="nav_agent")],
-    [CallbackButton(text="🪞 Рефлексия", payload="nav_reflection")],
+    [CallbackButton(text="👤 Личное", payload="nav_lichnoe"), CallbackButton(text="🧠 Агент", payload="nav_agent")],
+])
+
+# Группировка личных разделов — как в Telegram-боте.
+# Внутри: питание, рефлексия, мои поездки.
+KB_LICHNOE = _make_kb([
+    [CallbackButton(text="🍎 Питание", payload="nav_nutrition"), CallbackButton(text="🪞 Рефлексия", payload="nav_reflection")],
+    [CallbackButton(text="🌍 Мои поездки", payload="nav_travel")],
+    [CallbackButton(text="◀ Главная", payload="nav_main")],
 ])
 
 KB_PLAN = _make_kb([
@@ -486,11 +493,11 @@ KB_CALENDAR = _make_kb([
 ])
 
 KB_KNOWLEDGE = _make_kb([
-    [CallbackButton(text="🗺 Гиды", payload="nav_guides"), CallbackButton(text="🌍 Мои поездки", payload="nav_travel")],
-    [CallbackButton(text="📖 База по странам", payload="nav_country"), CallbackButton(text="🛂 Визы", payload="nav_visas")],
-    [CallbackButton(text="📁 Медиатека", payload="nav_media"), CallbackButton(text="💫 Личное", payload="nav_personal")],
-    [CallbackButton(text="🔐 Информация о ТО", payload="nav_to_info"), CallbackButton(text="📘 Инструкции", payload="nav_instructions")],
-    [CallbackButton(text="🍳 Рецепты", payload="nav_recipes"), CallbackButton(text="◀ Главная", payload="nav_main")],
+    [CallbackButton(text="🗺 Гиды", payload="nav_guides"), CallbackButton(text="📖 База по странам", payload="nav_country")],
+    [CallbackButton(text="🛂 Визы", payload="nav_visas"), CallbackButton(text="📁 Медиатека", payload="nav_media")],
+    [CallbackButton(text="💫 Заметки", payload="nav_personal"), CallbackButton(text="🔐 Информация о ТО", payload="nav_to_info")],
+    [CallbackButton(text="📘 Инструкции", payload="nav_instructions"), CallbackButton(text="🍳 Рецепты", payload="nav_recipes")],
+    [CallbackButton(text="◀ Главная", payload="nav_main")],
 ])
 
 KB_RECIPES = _make_kb([
@@ -971,6 +978,14 @@ async def kb_back_main(event: MessageCallback):
     if not allowed(cb.user.user_id): return
     clear_all_states(cb.user.user_id)
     await msg.answer(text="🏠 Главное меню:", attachments=[KB_MAIN])
+
+# -- Раздел «Личное»: питание, рефлексия, мои поездки (как в Telegram-боте)
+@router.message_callback(F.callback.payload == "nav_lichnoe")
+async def kb_lichnoe(event: MessageCallback):
+    cb = event.callback; msg = event.message
+    if not allowed(cb.user.user_id): return
+    clear_all_states(cb.user.user_id)
+    await msg.answer(text="👤 Личное:", attachments=[KB_LICHNOE])
 
 # -- Кнопки дневника питания --
 @router.message_callback(F.callback.payload == "nav_warmup")
