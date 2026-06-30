@@ -243,7 +243,7 @@ async def schedule_reminder(uid,ev_data,mins):
         async def _send():
             await asyncio.sleep(delay)
             kb=_make_kb([[CallbackButton(text="Выполнено",payload=f"cal_done_{_short_eid(ev_data.get('id',''))}")]])
-            await bot_instance.send_message(user_id=uid,text=f"<b>Напоминание</b>\n\n{title}\nЧерез {mins} мин — в {ts}",attachments=[kb])
+            await bot_instance.send_message(user_id=uid,text=f"<b>Напоминание</b>\n\n{title}\nЧерез {mins} мин — в {ts}",attachments=[kb],notify=True)
         tk=f"{uid}_{ev_data.get('id','')}"
         if tk in reminder_tasks: reminder_tasks[tk].cancel()
         reminder_tasks[tk]=asyncio.create_task(_send())
@@ -701,27 +701,40 @@ def is_calendar_intent(text):
 _sent_reminders = set()  # Запоминаем отправленные напоминания (event_id + time)
 
 async def check_upcoming_reminders():
-    """Проверяет ближайшие события и шлёт напоминания за 15 мин."""
+    """Проверяет ближайшие события и шлёт напоминания за 15 и 5 мин."""
+    logger.info("calendar reminder loop: started")
     while True:
         try:
             await asyncio.sleep(300)  # проверяем каждые 5 минут
-            if not cal_service or not bot_instance or not ALLOWED_USERS: continue
+            if not cal_service:
+                logger.info("calendar reminder: cal_service пустой, пропускаю тик")
+                continue
+            if not bot_instance:
+                logger.info("calendar reminder: bot_instance пустой, пропускаю тик")
+                continue
+            if not ALLOWED_USERS:
+                logger.info("calendar reminder: ALLOWED_USERS пустой, пропускаю тик")
+                continue
             now = now_msk()
-            # Смотрим события на ближайшие 30 минут
             events = get_events(now.date(), 1)
+            logger.info(f"calendar reminder tick: now={now.strftime('%H:%M')}, events_today={len(events)}")
+            fired = 0
             for ev in events:
                 s = ev.get("start", {})
                 if "dateTime" not in s: continue
                 ev_time = datetime.fromisoformat(s["dateTime"])
                 diff = (ev_time - now).total_seconds() / 60  # минут до события
                 eid = ev.get("id", "")
+                title = ev.get("summary", "Событие")
+                ts = ev_time.strftime("%H:%M")
+                # Бэг был: 5-минутное напоминание стояло в elif — никогда не срабатывало,
+                # потому что 0 < diff <= 5 всегда уже попадает в первый if (0 < diff <= 15).
+                # Развёл на два независимых if.
                 # Напоминание за 15 минут
                 if 0 < diff <= 15:
                     key = f"{eid}_15"
                     if key not in _sent_reminders:
                         _sent_reminders.add(key)
-                        title = ev.get("summary", "Событие")
-                        ts = ev_time.strftime("%H:%M")
                         desc = ev.get("description", "") or ""
                         text = f"🔔 <b>{title}</b> через {int(diff)} мин\nВ {ts}"
                         if desc:
@@ -735,25 +748,30 @@ async def check_upcoming_reminders():
                         kb = _make_kb([[CallbackButton(text="Выполнено", payload=f"cal_done_{_short_eid(eid)}")]])
                         for uid in ALLOWED_USERS:
                             try:
-                                await bot_instance.send_message(user_id=uid, text=text, attachments=[kb])
+                                await bot_instance.send_message(user_id=uid, text=text, attachments=[kb], notify=True)
+                                fired += 1
+                                logger.info(f"calendar reminder 15min sent: uid={uid} title={title!r} diff={int(diff)}")
                             except Exception as e:
-                                logger.error(f"Reminder send: {e}")
-                # Напоминание за 5 минут
-                elif 0 < diff <= 5:
+                                logger.error(f"Reminder 15min send failed uid={uid}: {e}")
+                # Напоминание за 5 минут — независимый if, не elif.
+                if 0 < diff <= 5:
                     key = f"{eid}_5"
                     if key not in _sent_reminders:
                         _sent_reminders.add(key)
-                        title = ev.get("summary", "Событие")
-                        ts = ev_time.strftime("%H:%M")
                         for uid in ALLOWED_USERS:
                             try:
-                                await bot_instance.send_message(user_id=uid, text=f"⚡ <b>{title}</b> — через {int(diff)} мин! В {ts}")
-                            except: pass
+                                await bot_instance.send_message(user_id=uid, text=f"⚡ <b>{title}</b> — через {int(diff)} мин! В {ts}", notify=True)
+                                fired += 1
+                                logger.info(f"calendar reminder 5min sent: uid={uid} title={title!r}")
+                            except Exception as e:
+                                logger.error(f"Reminder 5min send failed uid={uid}: {e}")
+            if fired:
+                logger.info(f"calendar reminder tick done: fired={fired}")
             # Чистим старые записи (больше 1000)
             if len(_sent_reminders) > 1000:
                 _sent_reminders.clear()
         except Exception as e:
-            logger.error(f"Reminder loop: {e}")
+            logger.error(f"Reminder loop: {e}", exc_info=True)
             await asyncio.sleep(60)
 
 _last_digest_date = None
