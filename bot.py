@@ -2191,6 +2191,7 @@ async def kb_useful(event: MessageCallback):
     cb = event.callback; msg = event.message
     if not allowed(cb.user.user_id): return
     kb = _make_kb([
+        [CallbackButton(text="💱 Курс валют", payload="rates_menu")],
         [CallbackButton(
             text="🛂 Расшифровка паспорта",
             url="https://passport-parse-wizard.lovable.app/"
@@ -2213,6 +2214,47 @@ async def kb_useful(event: MessageCallback):
         )],
     ])
     await msg.answer(text="Полезные инструменты:", attachments=[kb])
+
+
+@router.message_callback(F.callback.payload == "rates_menu")
+async def kb_rates_menu(event: MessageCallback):
+    cb = event.callback; msg = event.message
+    if not allowed(cb.user.user_id): return
+    kb = _make_kb([
+        [CallbackButton(text="📊 Tour-kassa (сегодня)",  payload="rate:tk_today")],
+        [CallbackButton(text="📊 Tour-kassa (завтра)",   payload="rate:tk_tomorrow")],
+        [CallbackButton(text="🛳 CruClub",  payload="rate:cruclub")],
+        [CallbackButton(text="✈️ PAC Group", payload="rate:pac")],
+        [CallbackButton(text="🚢 Ла Вояж",   payload="rate:lavoyage")],
+    ])
+    await msg.answer(text="💱 Курс какого ТО?", attachments=[kb])
+    await event.bot.send_callback(cb.callback_id, notification=" ")
+
+
+@router.message_callback(F.callback.payload.startswith("rate:"))
+async def kb_rate_source(event: MessageCallback):
+    cb = event.callback; msg = event.message
+    if not allowed(cb.user.user_id): return
+    source = cb.payload.split(":", 1)[1]
+    await event.bot.send_callback(cb.callback_id, notification="Тяну курс…")
+    try:
+        import currency_module as _cm
+        if source == "tk_today":
+            text = await _cm.fetch_tour_kassa_rates(tomorrow=False)
+        elif source == "tk_tomorrow":
+            text = await _cm.fetch_tour_kassa_rates(tomorrow=True)
+        elif source == "cruclub":
+            text = await _cm.fetch_cruclub_rates()
+        elif source == "pac":
+            text = await _cm.fetch_pac_rates()
+        elif source == "lavoyage":
+            text = await _cm.fetch_lavoyage_rates()
+        else:
+            text = "Неизвестный источник."
+    except Exception as e:
+        logger.error(f"currency rate {source}: {e}", exc_info=True)
+        text = f"❌ Не получилось получить курс: {str(e)[:200]}"
+    await msg.answer(text=text)
 
 # ==================== КОМАНДЫ ====================
 
