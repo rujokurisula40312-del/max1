@@ -4129,7 +4129,7 @@ async def cb_lovable(event: MessageCallback):
         f"<pre>{prompt}</pre>"
     )
     kb = _make_kb([
-        [LinkButton(text="🚀 Открыть Lovable бот", url="https://t.me/lovable_telegram_bot")]
+        [LinkButton(text="🚀 Открыть Lovable бот", url="https://telegram.me/lovable_telegram_bot")]
     ])
     await msg.answer(msg_text, attachments=[kb])
     await event.bot.send_callback(cb.callback_id, notification=" ")

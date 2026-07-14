@@ -234,7 +234,7 @@ function linkifyContacts(s) {
   // URL
   text = text.replace(/(https?:\/\/[^\s,]+)/g, '<a href="$1" target="_blank">$1</a>');
   // Telegram @username
-  text = text.replace(/(^|\s)@([a-zA-Z0-9_]{4,})/g, '$1<a href="https://t.me/$2" target="_blank">@$2</a>');
+  text = text.replace(/(^|\s)@([a-zA-Z0-9_]{4,})/g, '$1<a href="https://telegram.me/$2" target="_blank">@$2</a>');
   // Телефоны (+... или 8...)
   text = text.replace(/(\+?\d[\d\s\-()]{7,}\d)/g, '<a href="tel:$1">$1</a>');
   return text;
